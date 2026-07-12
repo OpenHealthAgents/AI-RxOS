@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Platform Architecture | AI-RxOS</title>
+    <meta name="description" content="Explore the enterprise-grade architecture of the AI-RxOS drug discovery platform.">
+    <link rel="icon" type="image/png" href="assets/favicon.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        .arch-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 32px;
+            margin-top: 40px;
+        }
+        .arch-card {
+            padding: 32px;
+        }
+        .arch-card h3 {
+            color: var(--accent-cyan);
+            margin-bottom: 16px;
+            font-size: 1.5rem;
+        }
+        .arch-card ul {
+            list-style: none;
+        }
+        .arch-card ul li {
+            margin-bottom: 8px;
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .arch-card ul li::before {
+            content: '→';
+            color: var(--accent-purple);
+        }
+        .arch-diagram {
+            background: #000;
+            padding: 40px;
+            border-radius: 16px;
+            border: 1px solid var(--border-glass);
+            margin: 60px 0;
+            font-family: monospace;
+            white-space: pre;
+            overflow-x: auto;
+            color: var(--accent-cyan);
+            line-height: 1.5;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <a href="index.html" class="logo" style="text-decoration: none; color: inherit;">
+            <span class="logo-icon"></span> AI-RxOS
+        </a>
+        <ul class="nav-links">
+            <li><a href="index.html#vision">Vision</a></li>
+            <li><a href="index.html#modules">Modules</a></li>
+            <li><a href="index.html#agents">AI Agents</a></li>
+            <li><a href="index.html#technology">Technology</a></li>
+        </ul>
+        <button class="btn-primary" onclick="window.location.href='mailto:kalyan@openhealthagents.org?subject=Requesting a Demo of AI-RxOS'">Request Demo</button>
+    </nav>
+
+    <header class="hero" style="min-height: 50vh; padding-top: 120px;">
+        <div class="hero-bg">
+            <img src="assets/hero_bg.png" alt="Biomedical abstract background" />
+            <div class="gradient-overlay"></div>
+        </div>
+        <div class="hero-content">
+            <h1 class="hero-title">Platform <span class="text-gradient">Architecture</span></h1>
+            <p class="hero-subtitle">A highly scalable, multi-agent AI operating system built to revolutionize therapeutic discovery.</p>
+        </div>
+    </header>
+
+    <section class="section">
+        <div class="container">
+            <div class="arch-diagram glass-panel">
+                    Web / Mobile Clients
+                             │
+                    API Gateway / BFF
+                             │
+ ┌────────────────────────────────────────────────────┐
+ │                Identity & Access                   │
+ └────────────────────────────────────────────────────┘
+                             │
+ ┌────────────────────────────────────────────────────┐
+ │               AI Orchestration Layer               │
+ └────────────────────────────────────────────────────┘
+                             │
+      ┌─────────────┬─────────────┬──────────────┐
+      │             │             │              │
+ Knowledge      Scientific    Molecule      Portfolio
+ Graph          Intelligence  Discovery     Intelligence
+      │             │             │              │
+      └─────────────┴─────────────┴──────────────┘
+                             │
+               Shared Data & AI Platform
+                             │
+      PostgreSQL | Neo4j | pgvector | Object Storage
+                             │
+               GPU Inference & Compute Cluster
+            </div>
+
+            <div class="section-header">
+                <h2>System <span class="text-gradient">Components</span></h2>
+                <p>AI-RxOS is designed from the ground up for massive scientific workloads, integrating state-of-the-art AI foundation models with secure enterprise infrastructure.</p>
+            </div>
+
+            <div class="arch-grid">
+                <div class="arch-card glass-panel">
+                    <h3>Frontend & APIs</h3>
+                    <ul>
+                        <li>Next.js & React Web Applications</li>
+                        <li>REST & GraphQL APIs</li>
+                        <li>Go-based API Gateway</li>
+                        <li>FastAPI for AI Services</li>
+                    </ul>
+                </div>
+                <div class="arch-card glass-panel">
+                    <h3>AI & Scientific Layer</h3>
+                    <ul>
+                        <li>Biomedical LLMs & Scientific RAG</li>
+                        <li>Protein Language Models (ESM, Evo2)</li>
+                        <li>NVIDIA BioNeMo & AlphaFold Integration</li>
+                        <li>Multi-Agent Orchestrator (MCP)</li>
+                    </ul>
+                </div>
+                <div class="arch-card glass-panel">
+                    <h3>Data Infrastructure</h3>
+                    <ul>
+                        <li>Neo4j for Scientific Knowledge Graphs</li>
+                        <li>PostgreSQL & pgvector</li>
+                        <li>Redis & Kafka for real-time processing</li>
+                        <li>OpenSearch for hybrid search capabilities</li>
+                    </ul>
+                </div>
+                <div class="arch-card glass-panel">
+                    <h3>Cloud & Security</h3>
+                    <ul>
+                        <li>Kubernetes Orchestration & GPU Autoscaling</li>
+                        <li>AES-256 Encryption & TLS 1.3</li>
+                        <li>SOC2 & HIPAA Ready Architecture</li>
+                        <li>OIDC / OAuth2 with strict RBAC</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-brand">
+                    <a href="index.html" class="logo" style="text-decoration: none; color: inherit;">
+                        <span class="logo-icon"></span> AI-RxOS
+                    </a>
+                    <p>The operating system powering next-generation therapeutic discovery.</p>
+                </div>
+                <div class="footer-links">
+                    <div class="link-group">
+                        <h4>Platform</h4>
+                        <a href="index.html#modules">Knowledge Graph</a>
+                        <a href="index.html#modules">Molecule Discovery</a>
+                        <a href="index.html#modules">Portfolio Builder</a>
+                    </div>
+                    <div class="link-group">
+                        <h4>Company</h4>
+                        <a href="about.html">About Neozenome AI</a>
+                        <a href="#">Careers</a>
+                        <a href="mailto:kalyan@openhealthagents.org">Contact</a>
+                    </div>
+                    <div class="link-group">
+                        <h4>Legal</h4>
+                        <a href="#">Privacy Policy</a>
+                        <a href="#">Terms of Service</a>
+                        <a href="#">Security</a>
+                    </div>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>&copy; 2026 Neozenome AI. All rights reserved.</p>
+            </div>
+        </div>
+    </footer>
+
+    <script src="script.js"></script>
+</body>
+</html>
