@@ -33,34 +33,52 @@ All APIs follow OpenAPI 3.0 specification for REST and Protocol Buffers for gRPC
 
 ---
 
-## 1. Identity & Access APIs
+## 1. Identity & Access APIs (better-auth)
 
-### 1.1 Identity Service (REST)
+### 1.1 Auth Service (REST - better-auth endpoints)
 
 #### Authentication Endpoints
 
-**POST /api/v1/auth/login**
+**POST /api/v1/auth/sign-in/email**
 ```json
 {
   "email": "user@example.com",
-  "password": "password",
-  "mfa_code": "123456"
+  "password": "password"
 }
 ```
 Response:
 ```json
 {
-  "access_token": "eyJhbGciOiJIUzI1NiIs...",
-  "refresh_token": "eyJhbGciOiJIUzI1NiIs...",
-  "expires_in": 3600,
-  "token_type": "Bearer"
+  "user": {
+    "id": "user-id",
+    "email": "user@example.com",
+    "name": "John Doe"
+  },
+  "session": {
+    "token": "session-token",
+    "expiresAt": "2024-01-01T00:00:00Z"
+  }
 }
 ```
 
-**POST /api/v1/auth/oauth/callback**
-Query params: `provider`, `code`, `state`
+**POST /api/v1/auth/sign-in/oauth**
+Query params: `provider` (google, github, etc.)
+Redirects to OAuth provider
 
-**POST /api/v1/auth/passkey/challenge**
+**GET /api/v1/auth/callback/oauth**
+Query params: `provider`, `code`, `state`
+Response: Redirects with session token
+
+**POST /api/v1/auth/sign-up/email**
+```json
+{
+  "email": "user@example.com",
+  "password": "password",
+  "name": "John Doe"
+}
+```
+
+**POST /api/v1/auth/sign-in/passkey**
 ```json
 {
   "email": "user@example.com"
@@ -69,158 +87,109 @@ Query params: `provider`, `code`, `state`
 Response:
 ```json
 {
-  "challenge": "base64-encoded-challenge",
-  "user_id": "uuid"
+  "options": {
+    "challenge": "base64-challenge",
+    "allowCredentials": [...]
+  }
 }
 ```
 
-**POST /api/v1/auth/passkey/verify**
+**POST /api/v1/auth/verify-passkey**
 ```json
 {
-  "credential_id": "credential-id",
-  "authenticator_data": "base64",
-  "client_data_json": "base64",
+  "credentialId": "credential-id",
+  "authenticatorData": "base64",
+  "clientDataJSON": "base64",
   "signature": "base64"
 }
 ```
 
-**POST /api/v1/auth/refresh**
+**POST /api/v1/auth/sign-out**
+Headers: `Authorization: Bearer <session-token>`
+
+**GET /api/v1/auth/session**
+Headers: `Authorization: Bearer <session-token>`
+Response:
 ```json
 {
-  "refresh_token": "eyJhbGciOiJIUzI1NiIs..."
+  "user": {
+    "id": "user-id",
+    "email": "user@example.com",
+    "name": "John Doe"
+  },
+  "session": {
+    "token": "session-token",
+    "expiresAt": "2024-01-01T00:00:00Z"
+  }
 }
 ```
 
-**POST /api/v1/auth/logout**
-Headers: `Authorization: Bearer <token>`
+#### 2FA Endpoints
 
-**POST /api/v1/auth/mfa/setup**
-Headers: `Authorization: Bearer <token>`
-
+**POST /api/v1/auth/2fa/enable**
+Headers: `Authorization: Bearer <session-token>`
+```json
+{
+  "password": "current-password"
+}
+```
 Response:
 ```json
 {
   "secret": "JBSWY3DPEHPK3PXP",
-  "qr_code": "data:image/png;base64,..."
+  "qrCode": "data:image/png;base64,...",
+  "backupCodes": ["code1", "code2", ...]
 }
 ```
 
-**POST /api/v1/auth/mfa/verify**
+**POST /api/v1/auth/2fa/verify**
 ```json
 {
   "code": "123456"
 }
 ```
 
----
-
-### 1.2 Authorization Service (gRPC)
-
-```protobuf
-service AuthzService {
-  rpc CheckPermission(CheckPermissionRequest) returns (CheckPermissionResponse);
-  rpc CheckPermissions(CheckPermissionsRequest) returns (CheckPermissionsResponse);
-  rpc GetPermissions(GetPermissionsRequest) returns (GetPermissionsResponse);
-  rpc CreatePolicy(CreatePolicyRequest) returns (Policy);
-  rpc UpdatePolicy(UpdatePolicyRequest) returns (Policy);
-  rpc DeletePolicy(DeletePolicyRequest) returns (google.protobuf.Empty);
-}
-
-message CheckPermissionRequest {
-  string principal_id = 1;
-  string resource = 2;
-  string action = 3;
-  map<string, string> context = 4;
-}
-
-message CheckPermissionResponse {
-  bool allowed = 1;
-  string reason = 2;
-}
-
-message CheckPermissionsRequest {
-  string principal_id = 1;
-  repeated PermissionCheck checks = 2;
-}
-
-message PermissionCheck {
-  string resource = 1;
-  string action = 2;
-  map<string, string> context = 3;
-}
-
-message CheckPermissionsResponse {
-  repeated PermissionResult results = 1;
-}
-
-message PermissionResult {
-  string resource = 1;
-  string action = 2;
-  bool allowed = 3;
-  string reason = 4;
-}
-
-message GetPermissionsRequest {
-  string principal_id = 1;
-  string resource = 2;
-}
-
-message GetPermissionsResponse {
-  repeated string permissions = 1;
-}
-
-message CreatePolicyRequest {
-  string name = 1;
-  string description = 2;
-  repeated PolicyRule rules = 3;
-}
-
-message PolicyRule {
-  string resource = 1;
-  repeated string actions = 2;
-  string effect = 3; // allow or deny
-  repeated Condition conditions = 4;
-}
-
-message Condition {
-  string attribute = 1;
-  string operator = 2; // eq, ne, in, not_in
-  repeated string values = 3;
-}
-
-message Policy {
-  string id = 1;
-  string name = 2;
-  string description = 3;
-  repeated PolicyRule rules = 4;
-  google.protobuf.Timestamp created_at = 5;
-  google.protobuf.Timestamp updated_at = 6;
+**POST /api/v1/auth/2fa/disable**
+Headers: `Authorization: Bearer <session-token>`
+```json
+{
+  "code": "123456"
 }
 ```
 
----
+#### Account Linking Endpoints
 
-### 1.3 Organization Service (REST)
+**POST /api/v1/auth/link-account**
+```json
+{
+  "provider": "google",
+  "code": "oauth-code"
+}
+```
+
+**DELETE /api/v1/auth/unlink-account**
+```json
+{
+  "accountId": "account-id"
+}
+```
+
+#### Organization Endpoints
 
 **GET /api/v1/organizations**
-Query params: `page`, `limit`, `search`
-
+Headers: `Authorization: Bearer <session-token>`
 Response:
 ```json
 {
   "organizations": [
     {
-      "id": "org-uuid",
+      "id": "org-id",
       "name": "PharmaCorp",
       "slug": "pharmacorp",
-      "plan": "enterprise",
-      "created_at": "2024-01-01T00:00:00Z",
-      "updated_at": "2024-01-01T00:00:00Z"
+      "role": "admin",
+      "createdAt": "2024-01-01T00:00:00Z"
     }
-  ],
-  "total": 1,
-  "page": 1,
-  "limit": 20
+  ]
 }
 ```
 
@@ -228,12 +197,139 @@ Response:
 ```json
 {
   "name": "PharmaCorp",
-  "slug": "pharmacorp",
-  "plan": "enterprise"
+  "slug": "pharmacorp"
 }
 ```
 
+**GET /api/v1/organizations/{org_id}/members**
+Response:
+```json
+{
+  "members": [
+    {
+      "userId": "user-id",
+      "name": "John Doe",
+      "email": "user@example.com",
+      "role": "admin",
+      "joinedAt": "2024-01-01T00:00:00Z"
+    }
+  ]
+}
+```
+
+**POST /api/v1/organizations/{org_id}/members/invite**
+```json
+{
+  "email": "newuser@example.com",
+  "role": "member"
+}
+```
+
+**PUT /api/v1/organizations/{org_id}/members/{user_id}/role**
+```json
+{
+  "role": "admin"
+}
+```
+
+**DELETE /api/v1/organizations/{org_id}/members/{user_id}**
+
+#### API Key Endpoints
+
+**POST /api/v1/api-keys**
+```json
+{
+  "name": "Service Account Key",
+  "organizationId": "org-id",
+  "scopes": ["read", "write"]
+}
+```
+Response:
+```json
+{
+  "id": "key-id",
+  "key": "sk_live_...",
+  "name": "Service Account Key",
+  "createdAt": "2024-01-01T00:00:00Z"
+}
+```
+
+**GET /api/v1/api-keys**
+Response:
+```json
+{
+  "apiKeys": [
+    {
+      "id": "key-id",
+      "name": "Service Account Key",
+      "prefix": "sk_live_",
+      "lastUsedAt": "2024-01-01T00:00:00Z",
+      "createdAt": "2024-01-01T00:00:00Z"
+    }
+  ]
+}
+```
+
+**DELETE /api/v1/api-keys/{key_id}**
+
+**POST /api/v1/api-keys/{key_id}/rotate**
+Response:
+```json
+{
+  "key": "sk_live_new_..."
+}
+```
+
+### 1.2 Auth Service Token Validation (Local JWKS)
+
+Instead of making synchronous gRPC calls to validate user sessions or API keys, downstream microservices perform local JWT validation. The Auth Service acts as an OIDC/OAuth2 identity provider and exposes a public JSON Web Key Set (JWKS) endpoint. Microservices cache these public keys to verify the signature of JWT tokens locally.
+
+#### JWKS Endpoint
+**GET /api/v1/auth/jwks**
+
+Response:
+```json
+{
+  "keys": [
+    {
+      "kty": "RSA",
+      "kid": "auth-key-v1",
+      "use": "sig",
+      "alg": "RS256",
+      "n": "u1W_Oi5...",
+      "e": "AQAB"
+    }
+  ]
+}
+```
+
+#### JWT Claims Schema
+The JWT tokens issued by the Better Auth service contain the following standard and custom claims:
+```json
+{
+  "iss": "https://auth.ai-rxos.local",
+  "sub": "user-uuid",
+  "aud": "https://api.ai-rxos.local",
+  "exp": 1719878400,
+  "nbf": 1719874800,
+  "iat": 1719874800,
+  "jti": "jwt-uuid",
+  "user": {
+    "name": "John Doe",
+    "email": "user@example.com"
+  },
+  "organization_id": "org-uuid",
+  "workspace_id": "workspace-uuid",
+  "project_id": "project-uuid",
+  "roles": ["member"],
+  "scopes": ["read:notebooks", "write:notebooks"]
+}
+```
+
+### 1.3 Organization Service (REST - Workspace and Project Management)
+
 **GET /api/v1/organizations/{org_id}/workspaces**
+Headers: `Authorization: Bearer <session-token>`
 
 **POST /api/v1/organizations/{org_id}/workspaces**
 ```json
@@ -797,7 +893,7 @@ type Query {
   hybridSearch(
     query: String!
     keywordWeight: Float
-    vectorWeight: Float
+    semanticWeight: Float
     limit: Int
   ): SearchResult
 }
@@ -851,66 +947,59 @@ type AggregationBucket {
 
 ---
 
-### 5.2 Indexing Service (gRPC)
+### 5.2 OKF Compiler Service (gRPC)
 
 ```protobuf
-service IndexingService {
-  rpc IndexDocument(IndexDocumentRequest) returns (IndexDocumentResponse);
-  rpc IndexDocuments(IndexDocumentsRequest) returns (IndexDocumentsResponse);
-  rpc DeleteDocument(DeleteDocumentRequest) returns (google.protobuf.Empty);
-  rpc UpdateDocument(UpdateDocumentRequest) returns (google.protobuf.Empty);
-  rpc RebuildIndex(RebuildIndexRequest) returns (stream RebuildIndexProgress);
+service CompilerService {
+  rpc CompileConcept(CompileConceptRequest) returns (CompileConceptResponse);
+  rpc BatchCompile(BatchCompileRequest) returns (BatchCompileResponse);
+  rpc LintWiki(LintWikiRequest) returns (LintWikiResponse);
+  rpc RebuildSearchIndex(RebuildSearchIndexRequest) returns (stream RebuildProgress);
 }
 
-message IndexDocumentRequest {
-  string index = 1;
-  string document_id = 2;
-  map<string, string> fields = 3;
-  repeated float embedding = 4;
+message CompileConceptRequest {
+  string concept_path = 1;      // e.g. "sales/tables/orders"
+  string type = 2;              // e.g. "BigQuery Table"
+  string title = 3;             // e.g. "Orders"
+  string description = 4;       // e.g. "One row per completed order..."
+  string resource = 5;          // e.g. URL
+  repeated string tags = 6;
+  string body_markdown = 7;     // Detailed schema, joins, or scientific content
 }
 
-message IndexDocumentResponse {
-  string document_id = 1;
+message CompileConceptResponse {
+  string file_path = 1;         // Generated markdown path
   bool success = 2;
   string error = 3;
 }
 
-message IndexDocumentsRequest {
-  string index = 1;
-  repeated Document documents = 2;
+message BatchCompileRequest {
+  repeated CompileConceptRequest concepts = 1;
 }
 
-message Document {
-  string document_id = 1;
-  map<string, string> fields = 2;
-  repeated float embedding = 3;
-}
-
-message IndexDocumentsResponse {
+message BatchCompileResponse {
   int32 succeeded = 1;
   int32 failed = 2;
   repeated string errors = 3;
 }
 
-message DeleteDocumentRequest {
-  string index = 1;
-  string document_id = 2;
+message LintWikiRequest {
+  bool fix_links = 1;
 }
 
-message UpdateDocumentRequest {
-  string index = 1;
-  string document_id = 2;
-  map<string, string> fields = 3;
-  repeated float embedding = 4;
+message LintWikiResponse {
+  repeated string broken_links = 1;
+  repeated string contradictions = 2;
+  repeated string orphans = 3;
 }
 
-message RebuildIndexRequest {
-  string index = 1;
+message RebuildSearchIndexRequest {
+  bool force_rebuild = 1;
 }
 
-message RebuildIndexProgress {
-  int32 documents_processed = 1;
-  int32 total_documents = 2;
+message RebuildProgress {
+  int32 concepts_processed = 1;
+  int32 total_concepts = 2;
   float progress = 3;
   string status = 4;
 }
@@ -1644,7 +1733,7 @@ Response:
   "timestamp": "2024-01-01T00:00:00Z",
   "services": [
     {
-      "name": "identity-service",
+      "name": "auth-service",
       "status": "healthy",
       "latency_ms": 5
     },
@@ -1675,7 +1764,7 @@ Response:
       "value": 1000,
       "timestamp": "2024-01-01T00:00:00Z",
       "labels": {
-        "service": "identity-service",
+        "service": "auth-service",
         "endpoint": "/login"
       }
     }

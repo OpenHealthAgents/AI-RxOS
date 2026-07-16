@@ -1,7 +1,7 @@
 # Microservices Architecture - AI-RxOS
 
 ## Overview
-AI-RxOS consists of 35 microservices organized into 12 bounded contexts. Services communicate via REST APIs, gRPC for high-performance inter-service calls, and event-driven messaging via Kafka.
+AI-RxOS consists of 34 microservices organized into 12 bounded contexts. Services communicate via REST APIs, gRPC for high-performance inter-service calls, and event-driven messaging via Kafka. Authentication and authorization are consolidated using the Better Auth framework. Downstream microservices validate signed JWT tokens locally using JSON Web Key Sets (JWKS) to optimize performance, avoiding synchronous gRPC validation bottlenecks.
 
 ---
 
@@ -11,93 +11,38 @@ AI-RxOS consists of 35 microservices organized into 12 bounded contexts. Service
 
 ## 1. Identity & Access Context
 
-### 1.1 Identity Service
-**Purpose:** User authentication and session management
+### 1.1 Auth Service
+**Purpose:** Authentication and authorization using the Better Auth framework
 
 **Responsibilities:**
-- OAuth2/OIDC/SAML authentication
-- Passkey authentication
-- Session management
-- Token issuance (JWT, refresh tokens)
-- Multi-factor authentication
-- Password management
+- User authentication via Better Auth (OAuth2, OIDC, Email/Password, Passkeys)
+- Multi-provider account linking (Google, GitHub, SAML, etc.)
+- Session management via Better Auth (JWT + database sessions using UUID keys)
+- Role-based access control via official Better Auth admin plugin
+- Organization/team management via official Better Auth organization plugin
+- Permission evaluation (RBAC + ABAC)
+- API key management for service accounts via official Better Auth api-key plugin
+- Audit logging for all auth/authz events
 
 **APIs:**
-- REST: `/api/v1/auth/*`
-- gRPC: `identity.AuthService`
+- REST: `/api/v1/auth/*` (Better Auth endpoints)
+- REST: `/api/v1/auth/jwks` (JWKS public keys for local token validation)
+- REST: `/api/v1/organizations/*` (organization management)
+- REST: `/api/v1/api-keys/*` (API key management)
 
-**Database:** PostgreSQL (users, sessions, mfa_secrets)
+**Database:** PostgreSQL (Better Auth schema: user, account, session, verification, organization, member, role, user_role, api_key)
 
-**Tech Stack:** Go, PostgreSQL, Redis
+**Tech Stack:** Node.js/TypeScript (Better Auth), PostgreSQL, Redis
 
 **Dependencies:** None (core service)
 
----
-
-### 1.2 Authorization Service
-**Purpose:** Authorization decisions and policy enforcement
-
-**Responsibilities:**
-- RBAC policy evaluation
-- ABAC policy evaluation
-- Permission checking
-- Policy management
-- Audit logging for access decisions
-
-**APIs:**
-- REST: `/api/v1/authz/*`
-- gRPC: `authorization.AuthzService`
-
-**Database:** PostgreSQL (roles, permissions, policies)
-
-**Tech Stack:** Go, PostgreSQL, Redis (policy cache)
-
-**Dependencies:** Identity Service
-
----
-
-### 1.3 Organization Service
-**Purpose:** Multi-tenant organization and workspace management
-
-**Responsibilities:**
-- Organization CRUD
-- Workspace CRUD
-- Project CRUD
-- Member management
-- Quota management
-- Billing integration
-
-**APIs:**
-- REST: `/api/v1/organizations/*`
-- gRPC: `organization.OrganizationService`
-
-**Database:** PostgreSQL (organizations, workspaces, projects, members)
-
-**Tech Stack:** Go, PostgreSQL
-
-**Dependencies:** Identity Service, Authorization Service
-
----
-
-### 1.4 API Key Service
-**Purpose:** API key management for service accounts
-
-**Responsibilities:**
-- API key generation
-- API key validation
-- API key rotation
-- API key revocation
-- Usage tracking
-
-**APIs:**
-- REST: `/api/v1/api-keys/*`
-- gRPC: `apikey.ApiKeyService`
-
-**Database:** PostgreSQL (api_keys)
-
-**Tech Stack:** Go, PostgreSQL, Redis
-
-**Dependencies:** Identity Service, Authorization Service
+**better-auth Configuration:**
+- Providers: Google, GitHub, Email/Password, Passkeys, SAML (enterprise)
+- Session management: JWT + database-backed sessions (with UUID primary/foreign keys generated via `generateId: () => crypto.randomUUID()`)
+- Organization support: official Better Auth organization plugin
+- Role-based access: official Better Auth admin plugin (RBAC)
+- Service accounts: official Better Auth api-key plugin
+- Two-factor authentication: Better Auth 2FA plugin
 
 ---
 
@@ -122,7 +67,7 @@ AI-RxOS consists of 35 microservices organized into 12 bounded contexts. Service
 
 **Tech Stack:** Go, Neo4j
 
-**Dependencies:** Authorization Service
+**Dependencies:** Auth Service
 
 ---
 
@@ -260,7 +205,7 @@ AI-RxOS consists of 35 microservices organized into 12 bounded contexts. Service
 
 **Tech Stack:** Python, PostgreSQL, Kafka, Temporal
 
-**Dependencies:** Authorization Service, Model Registry Service
+**Dependencies:** Auth Service, Model Registry Service
 
 ---
 
@@ -328,7 +273,7 @@ AI-RxOS consists of 35 microservices organized into 12 bounded contexts. Service
 
 **Tech Stack:** Go, PostgreSQL
 
-**Dependencies:** Authorization Service
+**Dependencies:** Auth Service
 
 ---
 
@@ -357,14 +302,13 @@ AI-RxOS consists of 35 microservices organized into 12 bounded contexts. Service
 ## 5. Scientific Search Context
 
 ### 5.1 Search Service
-**Purpose:** Unified search interface
+**Purpose:** Unified search interface for keyword and LLM wiki content
 
 **Responsibilities:**
 - Keyword search
-- Vector search
-- Hybrid search
-- Query parsing
-- Result ranking
+- Local hybrid search (BM25 + local vector) over the OKF wiki directory
+- Query parsing and translation to qmd search requests
+- Result ranking (integrating qmd scores and LLM re-ranking)
 - Faceted search
 - Search analytics
 
@@ -373,33 +317,33 @@ AI-RxOS consists of 35 microservices organized into 12 bounded contexts. Service
 - GraphQL: Search queries
 - gRPC: `search.SearchService`
 
-**Database:** OpenSearch, pgvector
+**Database:** OpenSearch, OKF Markdown Bundle (Shared Storage Volume)
 
-**Tech Stack:** Go, OpenSearch, pgvector
+**Tech Stack:** Go, OpenSearch, qmd CLI/MCP
 
-**Dependencies:** Authorization Service
+**Dependencies:** Auth Service
 
 ---
 
-### 5.2 Indexing Service
-**Purpose:** Document indexing and updates
+### 5.2 OKF Compiler/Enricher Service
+**Purpose:** Compiles literature and clinical data into the Open Knowledge Format (OKF) living wiki
 
 **Responsibilities:**
-- Document indexing
-- Embedding generation
-- Index updates
-- Index optimization
-- Bulk operations
-- Re-indexing
+- Ingested literature parsing and extraction
+- Compiling OKF concept markdown pages with YAML frontmatter
+- Managing and updating index.md and chronological log.md files
+- Resolving cross-links between concept pages (using relative Markdown links)
+- Auditing the wiki directory for schema consistency and contradictions (linting)
+- Bulk conversion of historical data to OKF v0.1 format
 
 **APIs:**
-- gRPC: `indexing.IndexingService`
+- gRPC: `okf.CompilerService`
 
-**Database:** OpenSearch, pgvector
+**Database:** OKF Markdown Bundle (Shared Storage Volume)
 
-**Tech Stack:** Python, OpenSearch, pgvector
+**Tech Stack:** Python, markdown-it, qmd MCP server
 
-**Dependencies:** Ingestion Service, Inference Service
+**Dependencies:** Ingestion Service, Inference Service, Auth Service
 
 ---
 
@@ -445,7 +389,7 @@ AI-RxOS consists of 35 microservices organized into 12 bounded contexts. Service
 
 **Tech Stack:** Python, PostgreSQL, RDKit
 
-**Dependencies:** Authorization Service
+**Dependencies:** Auth Service
 
 ---
 
@@ -535,7 +479,7 @@ AI-RxOS consists of 35 microservices organized into 12 bounded contexts. Service
 
 **Tech Stack:** Go, PostgreSQL
 
-**Dependencies:** Authorization Service
+**Dependencies:** Auth Service
 
 ---
 
@@ -582,7 +526,7 @@ AI-RxOS consists of 35 microservices organized into 12 bounded contexts. Service
 
 **Tech Stack:** Go, PostgreSQL
 
-**Dependencies:** Authorization Service
+**Dependencies:** Auth Service
 
 ---
 
@@ -628,7 +572,7 @@ AI-RxOS consists of 35 microservices organized into 12 bounded contexts. Service
 
 **Tech Stack:** Go, PostgreSQL
 
-**Dependencies:** Authorization Service
+**Dependencies:** Auth Service
 
 ---
 
@@ -676,7 +620,7 @@ AI-RxOS consists of 35 microservices organized into 12 bounded contexts. Service
 
 **Tech Stack:** Go, PostgreSQL, Redis (collaboration state)
 
-**Dependencies:** Authorization Service
+**Dependencies:** Auth Service
 
 ---
 
@@ -698,7 +642,7 @@ AI-RxOS consists of 35 microservices organized into 12 bounded contexts. Service
 
 **Tech Stack:** Go, PostgreSQL, Object Storage
 
-**Dependencies:** Authorization Service
+**Dependencies:** Auth Service
 
 ---
 
@@ -745,7 +689,7 @@ AI-RxOS consists of 35 microservices organized into 12 bounded contexts. Service
 
 **Tech Stack:** Go, PostgreSQL
 
-**Dependencies:** Authorization Service
+**Dependencies:** Auth Service
 
 ---
 
@@ -910,8 +854,7 @@ AI-RxOS consists of 35 microservices organized into 12 bounded contexts. Service
 
 ### Horizontal Scaling
 All stateless services scale horizontally via Kubernetes HPA:
-- Identity Service
-- Authorization Service
+- Auth Service (better-auth)
 - API Gateway
 - BFF
 - Search Service
@@ -944,10 +887,15 @@ API Gateway
    BFF
     ↓
 ┌─────────────────────────────────────────────────────────────┐
-│ Identity & Access                                           │
-│   Identity Service → Authorization Service                  │
-│   Organization Service                                      │
-│   API Key Service                                           │
+│ Identity & Access (better-auth)                              │
+│   Auth Service (Authentication + Authorization)              │
+│   - User authentication (OAuth2, OIDC, Email, Passkeys)       │
+│   - Multi-provider account linking                           │
+│   - Session management (JWT + database)                       │
+│   - Role-based access control                                 │
+│   - Organization/team management                              │
+│   - Permission evaluation (RBAC + ABAC)                       │
+│   - API key management                                       │
 └─────────────────────────────────────────────────────────────┘
     ↓
 ┌─────────────────────────────────────────────────────────────┐

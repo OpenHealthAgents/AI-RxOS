@@ -90,9 +90,7 @@ C4Container
     }
     
     Container_Boundary(identity_access, "Identity & Access") {
-        Container(identity_service, "Identity Service", "Go, PostgreSQL", "Authentication, session management")
-        Container(authorization_service, "Authorization Service", "Go, PostgreSQL", "RBAC, ABAC")
-        Container(organization_service, "Organization Service", "Go, PostgreSQL", "Multi-tenant management")
+        Container(auth_service, "Auth Service", "Node.js, PostgreSQL", "Authentication, authorization, and tenant management (Better Auth)")
     }
     
     Container_Boundary(knowledge_graph, "Knowledge Graph") {
@@ -115,8 +113,8 @@ C4Container
     }
     
     Container_Boundary(scientific_search, "Scientific Search") {
-        Container(search_service, "Search Service", "Go, OpenSearch, pgvector", "Unified search")
-        Container(indexing_service, "Indexing Service", "Python, OpenSearch", "Document indexing")
+        Container(search_service, "Search Service", "Go, OpenSearch, qmd", "Unified search over keyword and OKF wiki")
+        Container(okf_compiler, "OKF Compiler Service", "Python, Markdown", "Compiles ingested data into OKF markdown pages")
         Container(graph_search, "Graph Search Service", "Python, Neo4j", "Graph-based search")
     }
     
@@ -166,6 +164,7 @@ C4Container
     ContainerDb(opensearch, "OpenSearch", "Search engine")
     ContainerDb(kafka, "Kafka", "Event bus")
     ContainerDb(s3, "S3", "Object storage")
+    ContainerDb(okf_wiki, "LLM Wiki (OKF Volume)", "Shared Storage", "Compounded markdown concepts and log files")
     
     System_Ext(pubmed, "PubMed")
     System_Ext(clinical_trials_gov, "ClinicalTrials.gov")
@@ -178,14 +177,12 @@ C4Container
     Rel(mobile_app, api_gateway, "API calls", "HTTPS")
     
     Rel(api_gateway, bff, "Routes to", "gRPC")
-    Rel(bff, identity_service, "Authenticates", "gRPC")
-    Rel(bff, graph_service, "Queries", "GraphQL/gRPC")
-    Rel(bff, search_service, "Searches", "GraphQL/gRPC")
-    Rel(bff, agent_orchestrator, "Invokes agents", "WebSocket/gRPC")
+    Rel(bff, auth_service, "Fetches session / JWKS", "HTTPS")
+    Rel(bff, graph_service, "Queries (locally validates JWT)", "GraphQL/gRPC")
+    Rel(bff, search_service, "Searches (locally validates JWT)", "GraphQL/gRPC")
+    Rel(bff, agent_orchestrator, "Invokes agents (locally validates JWT)", "WebSocket/gRPC")
     
-    Rel(identity_service, postgres, "Stores data", "JDBC")
-    Rel(authorization_service, postgres, "Stores data", "JDBC")
-    Rel(organization_service, postgres, "Stores data", "JDBC")
+    Rel(auth_service, postgres, "Stores data (user, session, keys, org)", "JDBC")
     
     Rel(graph_service, neo4j, "Stores graph", "Bolt")
     Rel(entity_resolution, neo4j, "Stores graph", "Bolt")
@@ -200,8 +197,8 @@ C4Container
     Rel(agent_orchestrator, postgres, "Stores conversations", "JDBC")
     
     Rel(search_service, opensearch, "Searches", "HTTP")
-    Rel(indexing_service, opensearch, "Indexes", "HTTP")
-    Rel(indexing_service, postgres, "Embeddings", "pgvector")
+    Rel(search_service, okf_wiki, "Queries concepts (via qmd)", "File I/O")
+    Rel(okf_compiler, okf_wiki, "Compiles concepts to", "File I/O")
     
     Rel(docking_service, s3, "Stores structures", "S3 API")
     Rel(docking_service, postgres, "Stores results", "JDBC")
@@ -225,9 +222,7 @@ C4Container
 - **BFF**: Backend for Frontend for API aggregation and GraphQL federation
 
 **Identity & Access:**
-- **Identity Service**: Handles authentication, session management, and user data
-- **Authorization Service**: Handles RBAC and ABAC authorization decisions
-- **Organization Service**: Manages multi-tenant organizations, workspaces, and projects
+- **Auth Service**: Consolidated authentication and authorization service utilizing the Better Auth framework with its official `organization`, `admin` (RBAC), and `api-key` plugins to replace the old independent microservices.
 
 **Knowledge Graph:**
 - **Graph Service**: Core graph operations and Cypher querying
@@ -450,22 +445,22 @@ C4Component
 C4Component
     title Scientific Search Component View
     
-    Container(search_service, "Search Service", "Go, OpenSearch, pgvector")
+    Container(search_service, "Search Service", "Go, OpenSearch, qmd")
     
     Component(search_api, "Search API", "Go", "REST and GraphQL API")
     Component(query_parser, "Query Parser", "Go", "Query parsing and expansion")
     Component(keyword_searcher, "Keyword Searcher", "Go", "Keyword search")
-    Component(vector_searcher, "Vector Searcher", "Go", "Vector similarity search")
+    Component(qmd_searcher, "Qmd Wiki Searcher", "Go", "Local hybrid search over OKF markdown pages")
     Component(graph_searcher, "Graph Searcher", "Go", "Graph-based search")
     Component(result_ranker, "Result Ranker", "Go", "Result ranking and re-ranking")
     Component(search_aggregator, "Search Aggregator", "Go", "Hybrid search aggregation")
     
-    Container(indexing_service, "Indexing Service", "Python, OpenSearch")
+    Container(okf_compiler, "OKF Compiler Service", "Python, Markdown")
     
-    Component(document_processor, "Document Processor", "Python", "Document processing")
-    Component(embedding_generator, "Embedding Generator", "Python", "Embedding generation")
-    Component(index_writer, "Index Writer", "Python", "Index writing")
-    Component(index_optimizer, "Index Optimizer", "Python", "Index optimization")
+    Component(doc_parser, "Document Parser", "Python", "Ingested publication parser")
+    Component(okf_generator, "OKF Concept Generator", "Python", "Generates OKF Markdown pages")
+    Component(wiki_linter, "Wiki Linter & Validator", "Python", "Cross-link auditor")
+    Component(index_manager, "Index & Log Manager", "Python", "Updates index.md and log.md")
     
     Container(graph_search, "Graph Search Service", "Python, Neo4j")
     
@@ -475,29 +470,28 @@ C4Component
     
     ContainerDb(opensearch, "OpenSearch")
     ContainerDb(neo4j, "Neo4j")
-    ContainerDb(postgres, "PostgreSQL")
+    ContainerDb(okf_wiki, "LLM Wiki (OKF Volume)")
     Container(inference_service, "Inference Service", "Python, GPU")
     
     Rel(search_service, search_api, "Exposes")
     Rel(search_service, query_parser, "Uses")
     Rel(search_service, keyword_searcher, "Uses")
-    Rel(search_service, vector_searcher, "Uses")
+    Rel(search_service, qmd_searcher, "Uses")
     Rel(search_service, graph_searcher, "Uses")
     Rel(search_service, result_ranker, "Uses")
     Rel(search_service, search_aggregator, "Uses")
     
     Rel(keyword_searcher, opensearch, "Searches")
-    Rel(vector_searcher, postgres, "Searches embeddings")
+    Rel(qmd_searcher, okf_wiki, "Searches concepts via qmd")
     Rel(graph_searcher, graph_search, "Delegates graph search")
     
-    Rel(indexing_service, document_processor, "Uses")
-    Rel(indexing_service, embedding_generator, "Uses")
-    Rel(indexing_service, index_writer, "Uses")
-    Rel(indexing_service, index_optimizer, "Uses")
+    Rel(okf_compiler, doc_parser, "Uses")
+    Rel(okf_compiler, okf_generator, "Uses")
+    Rel(okf_compiler, wiki_linter, "Uses")
+    Rel(okf_compiler, index_manager, "Uses")
     
-    Rel(embedding_generator, inference_service, "Requests embeddings")
-    Rel(index_writer, opensearch, "Writes to index")
-    Rel(index_writer, postgres, "Writes embeddings")
+    Rel(okf_generator, okf_wiki, "Writes concept pages")
+    Rel(index_manager, okf_wiki, "Updates index.md and log.md")
     
     Rel(graph_search, graph_query_builder, "Uses")
     Rel(graph_search, graph_path_finder, "Uses")
@@ -790,7 +784,7 @@ C4Deployment
     Deployment_Node(aws_us_east, "AWS us-east-1", "Cloud Provider") {
         Deployment_Node(k8s_cluster, "Kubernetes Cluster", "EKS") {
             Container(api_gateway, "API Gateway", "Kong", "3 replicas")
-            Container(identity_service, "Identity Service", "Go", "3 replicas")
+            Container(auth_service, "Auth Service", "Node.js", "3 replicas")
             Container(graph_service, "Graph Service", "Go", "3 replicas")
             Container(agent_orchestrator, "Agent Orchestrator", "Python", "6 replicas")
             Container(inference_service, "Inference Service", "Python", "4 replicas on GPU nodes")
@@ -807,7 +801,7 @@ C4Deployment
     Deployment_Node(aws_us_west, "AWS us-west-2", "DR Region") {
         Deployment_Node(k8s_cluster_dr, "Kubernetes Cluster", "EKS") {
             Container(api_gateway_dr, "API Gateway", "Kong", "2 replicas")
-            Container(identity_service_dr, "Identity Service", "Go", "2 replicas")
+            Container(auth_service_dr, "Auth Service", "Node.js", "2 replicas")
             Container(graph_service_dr, "Graph Service", "Go", "2 replicas")
         }
         

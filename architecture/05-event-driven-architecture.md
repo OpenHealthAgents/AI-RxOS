@@ -395,29 +395,30 @@ AI-RxOS uses an event-driven architecture with Kafka as the primary message brok
 
 ---
 
-### 5. Scientific Search Events
+### 5. Scientific Search & OKF Events
 
-#### document.indexed
+#### concept.compiled
 ```json
 {
-  "event_type": "search.document.indexed",
+  "event_type": "okf.concept.compiled",
   "data": {
-    "document_id": "uuid",
-    "index": "documents",
-    "indexed_at": "ISO8601"
+    "concept_path": "wiki/genes/HER2",
+    "type": "Gene",
+    "file_path": "/wiki/genes/HER2.md",
+    "compiled_at": "ISO8601"
   }
 }
 ```
 
-#### embedding.generated
+#### wiki.linted
 ```json
 {
-  "event_type": "search.embedding.generated",
+  "event_type": "okf.wiki.linted",
   "data": {
-    "document_id": "uuid",
-    "model": "text-embedding-ada-002",
-    "dimension": 1536,
-    "generated_at": "ISO8601"
+    "total_concepts": 120,
+    "broken_links_fixed": 3,
+    "contradictions_flagged": 1,
+    "linted_at": "ISO8601"
   }
 }
 ```
@@ -428,9 +429,9 @@ AI-RxOS uses an event-driven architecture with Kafka as the primary message brok
   "event_type": "search.search.performed",
   "data": {
     "query": "HER2 breast cancer",
-    "search_type": "hybrid",
+    "search_type": "qmd_hybrid",
     "results_count": 25,
-    "latency_ms": 150,
+    "latency_ms": 15,
     "user_id": "uuid"
   }
 }
@@ -759,26 +760,19 @@ AI-RxOS uses an event-driven architecture with Kafka as the primary message brok
 
 ```
 [Ingestion Service]
-    ↓ document.ingested
+    ↓ literature.document.ingested
 [Extraction Service]
-    ↓ entities.extracted
+    ↓ literature.entities.extracted
 [Entity Resolution Service]
-    ↓ entity.resolved
+    ↓ graph.entity.resolved
 [Graph Service]
-    ↓ node.created, relationship.created
-[Graph Service]
-    ↓ node.created
-[Knowledge Graph]
-    ↓ document.indexed
-[Indexing Service]
-    ↓ embedding.generated
-[Inference Service]
-    ↓ document.indexed
+    ↓ graph.node.created, graph.relationship.created
+[OKF Compiler Service]
+    ↓ okf.concept.compiled
+[OKF Compiler Service]
+    ↓ okf.wiki.linted
 [Search Service]
-    ↓ novelty.scored
-[Extraction Service]
-    ↓ document.processed
-[Ingestion Service]
+    ↓ search.search.performed
 ```
 
 ### 2. AI Agent Conversation Flow
@@ -878,8 +872,8 @@ AI-RxOS uses an event-driven architecture with Kafka as the primary message brok
 | ai.tool.invoked | 12 | 7d | 3 | Tool invocation |
 | ai.tool.completed | 12 | 7d | 3 | Tool completion |
 | ai.model.deployed | 3 | 7d | 3 | Model deployment |
-| search.document.indexed | 12 | 7d | 3 | Document indexing |
-| search.embedding.generated | 12 | 7d | 3 | Embedding generation |
+| okf.concept.compiled | 12 | 7d | 3 | OKF Concept Compilation |
+| okf.wiki.linted | 3 | 7d | 3 | Wiki Lint Pass |
 | search.search.performed | 12 | 1d | 3 | Search analytics |
 | molecule.molecule.created | 6 | 7d | 3 | Molecule creation |
 | molecule.docking.job.submitted | 6 | 7d | 3 | Docking job submission |
@@ -918,8 +912,7 @@ Each service has its own consumer group for independent processing. For parallel
 | extraction-service | literature.document.ingested | 4 | Process documents |
 | entity-resolution-service | literature.entities.extracted | 2 | Resolve entities |
 | graph-service | graph.entity.resolved | 2 | Update graph |
-| indexing-service | graph.node.created, graph.relationship.created | 4 | Index content |
-| embedding-service | document.indexed | 4 | Generate embeddings |
+| okf-compiler-service | literature.document.ingested, graph.node.created | 4 | Compile OKF Concepts |
 | agent-orchestrator | ai.agent.invoked, ai.tool.completed | 6 | Orchestrate agents |
 | docking-service | molecule.docking.job.submitted | 4 | Process docking |
 | admet-service | molecule.created | 4 | Predict ADMET |

@@ -4,7 +4,7 @@
 AI-RxOS uses multiple database technologies optimized for different use cases:
 - **PostgreSQL**: Relational data, transactions, structured queries
 - **Neo4j**: Knowledge graph, relationships, graph traversals
-- **pgvector**: Vector embeddings, similarity search
+- **LLM Wiki (OKF)**: Markdown-based persistent context, structured concepts, local search
 - **Redis**: Caching, session state, real-time data
 - **OpenSearch**: Full-text search, document indexing
 - **Object Storage**: Files, documents, molecular structures
@@ -13,143 +13,155 @@ AI-RxOS uses multiple database technologies optimized for different use cases:
 
 ## 1. PostgreSQL Schemas
 
-### 1.1 Identity & Access Schema
+#### 1.1 Identity & Access Schema (better-auth)
 
-#### users
+#### user (better-auth core table)
 ```sql
-CREATE TABLE users (
+CREATE TABLE user (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  email VARCHAR(255) UNIQUE NOT NULL,
-  password_hash VARCHAR(255),
-  first_name VARCHAR(100),
-  last_name VARCHAR(100),
-  avatar_url VARCHAR(500),
+  email TEXT UNIQUE NOT NULL,
   email_verified BOOLEAN DEFAULT FALSE,
-  mfa_enabled BOOLEAN DEFAULT FALSE,
-  mfa_secret VARCHAR(255),
-  last_login_at TIMESTAMP WITH TIME ZONE,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  deleted_at TIMESTAMP WITH TIME ZONE
-);
-
-CREATE INDEX idx_users_email ON users(email);
-CREATE INDEX idx_users_deleted_at ON users(deleted_at) WHERE deleted_at IS NULL;
-```
-
-#### sessions
-```sql
-CREATE TABLE sessions (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  access_token VARCHAR(500) UNIQUE NOT NULL,
-  refresh_token VARCHAR(500) UNIQUE NOT NULL,
-  user_agent VARCHAR(500),
-  ip_address INET,
-  expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
-CREATE INDEX idx_sessions_user_id ON sessions(user_id);
-CREATE INDEX idx_sessions_access_token ON sessions(access_token);
-CREATE INDEX idx_sessions_expires_at ON sessions(expires_at);
-```
-
-#### roles
-```sql
-CREATE TABLE roles (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name VARCHAR(100) UNIQUE NOT NULL,
-  description TEXT,
-  is_system BOOLEAN DEFAULT FALSE,
+  name TEXT,
+  avatar_url TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
-CREATE INDEX idx_roles_name ON roles(name);
+CREATE INDEX idx_user_email ON user(email);
 ```
 
-#### permissions
+#### account (better-auth OAuth provider linking)
 ```sql
-CREATE TABLE permissions (
+CREATE TABLE account (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  resource VARCHAR(100) NOT NULL,
-  action VARCHAR(100) NOT NULL,
-  description TEXT,
-  UNIQUE(resource, action)
-);
-
-CREATE INDEX idx_permissions_resource ON permissions(resource);
-CREATE INDEX idx_permissions_action ON permissions(action);
-```
-
-#### role_permissions
-```sql
-CREATE TABLE role_permissions (
-  role_id UUID NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
-  permission_id UUID NOT NULL REFERENCES permissions(id) ON DELETE CASCADE,
-  PRIMARY KEY (role_id, permission_id)
-);
-```
-
-#### user_roles
-```sql
-CREATE TABLE user_roles (
-  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  role_id UUID NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
-  scope_type VARCHAR(50), -- 'organization', 'workspace', 'project'
-  scope_id UUID,
-  granted_by UUID REFERENCES users(id),
-  granted_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  account_id TEXT NOT NULL,
+  provider_id TEXT NOT NULL,
+  user_id UUID NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+  access_token TEXT,
+  refresh_token TEXT,
+  id_token TEXT,
   expires_at TIMESTAMP WITH TIME ZONE,
-  PRIMARY KEY (user_id, role_id, scope_type, scope_id)
+  password TEXT, -- For email/password auth
+  UNIQUE(account_id, provider_id)
 );
 
-CREATE INDEX idx_user_roles_user_id ON user_roles(user_id);
-CREATE INDEX idx_user_roles_role_id ON user_roles(role_id);
+CREATE INDEX idx_account_user_id ON account(user_id);
+CREATE INDEX idx_account_provider_id ON account(provider_id);
 ```
 
-#### organizations
+#### session (better-auth session management)
 ```sql
-CREATE TABLE organizations (
+CREATE TABLE session (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name VARCHAR(255) NOT NULL,
-  slug VARCHAR(100) UNIQUE NOT NULL,
-  logo_url VARCHAR(500),
-  plan VARCHAR(50) DEFAULT 'free', -- 'free', 'professional', 'enterprise'
-  max_users INTEGER DEFAULT 5,
-  max_workspaces INTEGER DEFAULT 3,
-  settings JSONB DEFAULT '{}',
+  user_id UUID NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+  expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+  ip_address TEXT,
+  user_agent TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX idx_session_user_id ON session(user_id);
+CREATE INDEX idx_session_expires_at ON session(expires_at);
+```
+
+#### verification (better-auth 2FA, email verification)
+```sql
+CREATE TABLE verification (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  identifier TEXT NOT NULL,
+  value TEXT,
+  expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX idx_verification_identifier ON verification(identifier);
+CREATE INDEX idx_verification_expires_at ON verification(expires_at);
+```
+
+#### organization (better-auth organizations plugin)
+```sql
+CREATE TABLE organization (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,
+  slug TEXT UNIQUE NOT NULL,
+  logo_url TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX idx_organization_slug ON organization(slug);
+```
+
+#### member (better-auth organization membership)
+```sql
+CREATE TABLE member (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id UUID NOT NULL REFERENCES organization(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+  role TEXT NOT NULL DEFAULT 'member', -- 'admin', 'member'
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  deleted_at TIMESTAMP WITH TIME ZONE
-);
-
-CREATE INDEX idx_organizations_slug ON organizations(slug);
-CREATE INDEX idx_organizations_deleted_at ON organizations(deleted_at) WHERE deleted_at IS NULL;
-```
-
-#### organization_members
-```sql
-CREATE TABLE organization_members (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  role VARCHAR(50) DEFAULT 'member', -- 'owner', 'admin', 'member'
-  joined_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   UNIQUE(organization_id, user_id)
 );
 
-CREATE INDEX idx_org_members_org_id ON organization_members(organization_id);
-CREATE INDEX idx_org_members_user_id ON organization_members(user_id);
+CREATE INDEX idx_member_org_id ON member(organization_id);
+CREATE INDEX idx_member_user_id ON member(user_id);
+```
+
+#### role (better-auth roles plugin)
+```sql
+CREATE TABLE role (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT UNIQUE NOT NULL,
+  description TEXT,
+  permissions JSONB DEFAULT '{}',
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX idx_role_name ON role(name);
+```
+
+#### user_role (better-auth role assignments)
+```sql
+CREATE TABLE user_role (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+  role_id UUID NOT NULL REFERENCES role(id) ON DELETE CASCADE,
+  organization_id UUID REFERENCES organization(id) ON DELETE CASCADE,
+  workspace_id UUID,
+  project_id UUID,
+  granted_by UUID REFERENCES user(id),
+  granted_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  expires_at TIMESTAMP WITH TIME ZONE,
+  UNIQUE(user_id, role_id, organization_id, workspace_id, project_id)
+);
+
+CREATE INDEX idx_user_role_user_id ON user_role(user_id);
+CREATE INDEX idx_user_role_role_id ON user_role(role_id);
+CREATE INDEX idx_user_role_org_id ON user_role(organization_id);
+```
+
+#### organizations (extended better-auth organization)
+```sql
+-- Note: The basic organization table is defined above with better-auth
+-- This table extends it with additional AI-RxOS specific fields
+ALTER TABLE organization ADD COLUMN plan TEXT DEFAULT 'free'; -- 'free', 'professional', 'enterprise'
+ALTER TABLE organization ADD COLUMN max_users INTEGER DEFAULT 5;
+ALTER TABLE organization ADD COLUMN max_workspaces INTEGER DEFAULT 3;
+ALTER TABLE organization ADD COLUMN settings JSONB DEFAULT '{}';
+ALTER TABLE organization ADD COLUMN deleted_at TIMESTAMP WITH TIME ZONE;
+
+CREATE INDEX idx_organization_deleted_at ON organization(deleted_at) WHERE deleted_at IS NULL;
 ```
 
 #### workspaces
 ```sql
-CREATE TABLE workspaces (
+CREATE TABLE workspace (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-  name VARCHAR(255) NOT NULL,
+  organization_id UUID NOT NULL REFERENCES organization(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
   description TEXT,
   settings JSONB DEFAULT '{}',
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -157,69 +169,69 @@ CREATE TABLE workspaces (
   deleted_at TIMESTAMP WITH TIME ZONE
 );
 
-CREATE INDEX idx_workspaces_org_id ON workspaces(organization_id);
-CREATE INDEX idx_workspaces_deleted_at ON workspaces(deleted_at) WHERE deleted_at IS NULL;
+CREATE INDEX idx_workspace_org_id ON workspace(organization_id);
+CREATE INDEX idx_workspace_deleted_at ON workspace(deleted_at) WHERE deleted_at IS NULL;
 ```
 
 #### workspace_members
 ```sql
-CREATE TABLE workspace_members (
+CREATE TABLE workspace_member (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
-  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  role VARCHAR(50) DEFAULT 'member',
+  workspace_id UUID NOT NULL REFERENCES workspace(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+  role TEXT DEFAULT 'member',
   joined_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   UNIQUE(workspace_id, user_id)
 );
 
-CREATE INDEX idx_workspace_members_ws_id ON workspace_members(workspace_id);
-CREATE INDEX idx_workspace_members_user_id ON workspace_members(user_id);
+CREATE INDEX idx_workspace_member_ws_id ON workspace_member(workspace_id);
+CREATE INDEX idx_workspace_member_user_id ON workspace_member(user_id);
 ```
 
 #### projects
 ```sql
-CREATE TABLE projects (
+CREATE TABLE project (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
-  name VARCHAR(255) NOT NULL,
+  workspace_id UUID NOT NULL REFERENCES workspace(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
   description TEXT,
-  status VARCHAR(50) DEFAULT 'active', -- 'active', 'archived', 'deleted'
+  status TEXT DEFAULT 'active', -- 'active', 'archived', 'deleted'
   settings JSONB DEFAULT '{}',
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   deleted_at TIMESTAMP WITH TIME ZONE
 );
 
-CREATE INDEX idx_projects_ws_id ON projects(workspace_id);
-CREATE INDEX idx_projects_status ON projects(status);
-CREATE INDEX idx_projects_deleted_at ON projects(deleted_at) WHERE deleted_at IS NULL;
+CREATE INDEX idx_project_ws_id ON project(workspace_id);
+CREATE INDEX idx_project_status ON project(status);
+CREATE INDEX idx_project_deleted_at ON project(deleted_at) WHERE deleted_at IS NULL;
 ```
 
 #### project_members
 ```sql
-CREATE TABLE project_members (
+CREATE TABLE project_member (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  role VARCHAR(50) DEFAULT 'member',
+  project_id UUID NOT NULL REFERENCES project(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+  role TEXT DEFAULT 'member',
   joined_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   UNIQUE(project_id, user_id)
 );
 
-CREATE INDEX idx_project_members_proj_id ON project_members(project_id);
-CREATE INDEX idx_project_members_user_id ON project_members(user_id);
+CREATE INDEX idx_project_member_proj_id ON project_member(project_id);
+CREATE INDEX idx_project_member_user_id ON project_member(user_id);
 ```
 
 #### api_keys
 ```sql
-CREATE TABLE api_keys (
+CREATE TABLE api_key (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  organization_id UUID REFERENCES organizations(id) ON DELETE CASCADE,
-  workspace_id UUID REFERENCES workspaces(id) ON DELETE CASCADE,
-  name VARCHAR(255) NOT NULL,
-  key_hash VARCHAR(255) UNIQUE NOT NULL,
-  prefix VARCHAR(20) NOT NULL,
+  user_id UUID NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+  organization_id UUID REFERENCES organization(id) ON DELETE CASCADE,
+  workspace_id UUID REFERENCES workspace(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  key_hash TEXT UNIQUE NOT NULL,
+  prefix TEXT NOT NULL,
   scopes TEXT[] DEFAULT '{}',
   expires_at TIMESTAMP WITH TIME ZONE,
   last_used_at TIMESTAMP WITH TIME ZONE,
@@ -227,33 +239,33 @@ CREATE TABLE api_keys (
   revoked_at TIMESTAMP WITH TIME ZONE
 );
 
-CREATE INDEX idx_api_keys_user_id ON api_keys(user_id);
-CREATE INDEX idx_api_keys_prefix ON api_keys(prefix);
-CREATE INDEX idx_api_keys_revoked_at ON api_keys(revoked_at) WHERE revoked_at IS NULL;
+CREATE INDEX idx_api_key_user_id ON api_key(user_id);
+CREATE INDEX idx_api_key_prefix ON api_key(prefix);
+CREATE INDEX idx_api_key_revoked_at ON api_key(revoked_at) WHERE revoked_at IS NULL;
 ```
 
 #### audit_logs
 ```sql
-CREATE TABLE audit_logs (
+CREATE TABLE audit_log (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID REFERENCES users(id),
-  organization_id UUID REFERENCES organizations(id),
-  workspace_id UUID REFERENCES workspaces(id),
-  project_id UUID REFERENCES projects(id),
-  action VARCHAR(100) NOT NULL,
-  resource_type VARCHAR(100),
+  user_id UUID REFERENCES user(id) ON DELETE SET NULL,
+  organization_id UUID REFERENCES organization(id) ON DELETE SET NULL,
+  workspace_id UUID REFERENCES workspace(id) ON DELETE SET NULL,
+  project_id UUID REFERENCES project(id) ON DELETE SET NULL,
+  action TEXT NOT NULL,
+  resource_type TEXT,
   resource_id UUID,
-  ip_address INET,
-  user_agent VARCHAR(500),
+  ip_address TEXT,
+  user_agent TEXT,
   metadata JSONB DEFAULT '{}',
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
-CREATE INDEX idx_audit_logs_user_id ON audit_logs(user_id);
-CREATE INDEX idx_audit_logs_org_id ON audit_logs(organization_id);
-CREATE INDEX idx_audit_logs_action ON audit_logs(action);
-CREATE INDEX idx_audit_logs_created_at ON audit_logs(created_at);
-CREATE INDEX idx_audit_logs_resource ON audit_logs(resource_type, resource_id);
+CREATE INDEX idx_audit_log_user_id ON audit_log(user_id);
+CREATE INDEX idx_audit_log_org_id ON audit_log(organization_id);
+CREATE INDEX idx_audit_log_action ON audit_log(action);
+CREATE INDEX idx_audit_log_created_at ON audit_log(created_at);
+CREATE INDEX idx_audit_log_resource ON audit_log(resource_type, resource_id);
 ```
 
 ---
@@ -551,7 +563,7 @@ CREATE TABLE agents (
   tools JSONB DEFAULT '{}',
   enabled BOOLEAN DEFAULT TRUE,
   version INTEGER DEFAULT 1,
-  created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+  created_by UUID REFERENCES user(id) ON DELETE SET NULL,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -565,9 +577,9 @@ CREATE INDEX idx_agents_enabled ON agents(enabled);
 CREATE TABLE conversations (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   agent_id UUID NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
-  user_id UUID REFERENCES users(id) ON DELETE SET NULL,
-  workspace_id UUID REFERENCES workspaces(id) ON DELETE SET NULL,
-  project_id UUID REFERENCES projects(id) ON DELETE SET NULL,
+  user_id UUID REFERENCES user(id) ON DELETE SET NULL,
+  workspace_id UUID REFERENCES workspace(id) ON DELETE SET NULL,
+  project_id UUID REFERENCES project(id) ON DELETE SET NULL,
   title VARCHAR(255),
   status VARCHAR(50) DEFAULT 'active', -- 'active', 'archived', 'deleted'
   metadata JSONB DEFAULT '{}',
@@ -678,7 +690,7 @@ CREATE TABLE prompts (
   template TEXT NOT NULL,
   variables JSONB DEFAULT '{}',
   version INTEGER DEFAULT 1,
-  created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+  created_by UUID REFERENCES user(id) ON DELETE SET NULL,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -946,7 +958,7 @@ CREATE INDEX idx_competitor_events_date ON competitor_events(event_date);
 ```sql
 CREATE TABLE portfolios (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  workspace_id UUID NOT NULL REFERENCES workspace(id) ON DELETE CASCADE,
   name VARCHAR(255) NOT NULL,
   description TEXT,
   status VARCHAR(50) DEFAULT 'active', -- 'active', 'archived'
@@ -1023,10 +1035,10 @@ CREATE INDEX idx_portfolio_scores_portfolio_id ON portfolio_scores(portfolio_id)
 ```sql
 CREATE TABLE notebooks (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  project_id UUID NOT NULL REFERENCES project(id) ON DELETE CASCADE,
   title VARCHAR(255) NOT NULL,
   description TEXT,
-  owner_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  owner_id UUID NOT NULL REFERENCES user(id) ON DELETE CASCADE,
   tags TEXT[] DEFAULT '{}',
   settings JSONB DEFAULT '{}',
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -1064,7 +1076,7 @@ CREATE TABLE notebook_versions (
   notebook_id UUID NOT NULL REFERENCES notebooks(id) ON DELETE CASCADE,
   version INTEGER NOT NULL,
   snapshot JSONB NOT NULL,
-  created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+  created_by UUID REFERENCES user(id) ON DELETE SET NULL,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   UNIQUE(notebook_id, version)
 );
@@ -1077,7 +1089,7 @@ CREATE INDEX idx_notebook_versions_notebook_id ON notebook_versions(notebook_id)
 CREATE TABLE notebook_collaborators (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   notebook_id UUID NOT NULL REFERENCES notebooks(id) ON DELETE CASCADE,
-  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES user(id) ON DELETE CASCADE,
   role VARCHAR(50) DEFAULT 'editor', -- 'owner', 'editor', 'viewer'
   joined_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   UNIQUE(notebook_id, user_id)
@@ -1091,13 +1103,13 @@ CREATE INDEX idx_notebook_collaborators_user_id ON notebook_collaborators(user_i
 ```sql
 CREATE TABLE documents_v2 (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  workspace_id UUID NOT NULL REFERENCES workspace(id) ON DELETE CASCADE,
   folder_id UUID REFERENCES documents_v2(id) ON DELETE CASCADE,
   name VARCHAR(255) NOT NULL,
   type VARCHAR(50) NOT NULL, -- 'pdf', 'docx', 'pptx', 'csv', etc.
   size BIGINT,
   file_path VARCHAR(500),
-  owner_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  owner_id UUID NOT NULL REFERENCES user(id) ON DELETE CASCADE,
   metadata JSONB DEFAULT '{}',
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -1118,7 +1130,7 @@ CREATE TABLE document_versions (
   version INTEGER NOT NULL,
   file_path VARCHAR(500),
   size BIGINT,
-  created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+  created_by UUID REFERENCES user(id) ON DELETE SET NULL,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   UNIQUE(document_id, version)
 );
@@ -1136,7 +1148,7 @@ CREATE TABLE reports (
   parameters JSONB DEFAULT '{}',
   status VARCHAR(50) DEFAULT 'pending', -- 'pending', 'generating', 'completed', 'failed'
   file_path VARCHAR(500),
-  generated_by UUID REFERENCES users(id) ON DELETE SET NULL,
+  generated_by UUID REFERENCES user(id) ON DELETE SET NULL,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   completed_at TIMESTAMP WITH TIME ZONE
 );
@@ -1382,69 +1394,75 @@ CREATE INDEX trial_nct_id IF NOT EXISTS FOR (n:ClinicalTrial) ON (n.nct_id);
 
 ---
 
-## 3. pgvector Schema
+## 3. LLM Wiki (Open Knowledge Format v0.1)
 
-### Vector Tables
+Rather than storing vector embeddings in a database table, the system uses a shared storage volume organized as a living wiki conforming to the Open Knowledge Format (OKF v0.1) specification.
 
-#### document_embeddings
-```sql
-CREATE TABLE document_embeddings (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  document_id UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
-  embedding vector(1536) NOT NULL, -- OpenAI ada-002 dimension
-  model VARCHAR(100) NOT NULL,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  UNIQUE(document_id, model)
-);
-
-CREATE INDEX idx_doc_embeddings_doc_id ON document_embeddings(document_id);
-CREATE INDEX idx_doc_embeddings_vector ON document_embeddings USING ivfflat (embedding vector_cosine_ops);
+### 3.1 OKF Directory Structure
+```
+wiki-root/
+├── raw/                      # Curated immutable raw source files (PDFs, papers, logs)
+│   ├── pub_her2_2026.pdf
+│   └── trial_nct0011.txt
+└── wiki/                     # Compiled markdown concept pages
+    ├── index.md              # Content catalog of all concept pages
+    ├── log.md                # Chronological append-only change log
+    ├── genes/
+    │   ├── HER2.md
+    │   └── BRCA1.md
+    ├── drugs/
+    │   └── Trastuzumab.md
+    └── trials/
+        └── NCT001122.md
 ```
 
-#### node_embeddings
-```sql
-CREATE TABLE node_embeddings (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  node_id UUID NOT NULL REFERENCES graph_nodes(id) ON DELETE CASCADE,
-  embedding vector(1536) NOT NULL,
-  model VARCHAR(100) NOT NULL,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  UNIQUE(node_id, model)
-);
+### 3.2 OKF Concept File Specification
+Each concept file is a single Markdown page containing YAML frontmatter and a structured body.
 
-CREATE INDEX idx_node_embeddings_node_id ON node_embeddings(node_id);
-CREATE INDEX idx_node_embeddings_vector ON node_embeddings USING ivfflat (embedding vector_cosine_ops);
+#### Sample Concept: `wiki/genes/HER2.md`
+```markdown
+---
+type: Gene
+title: HER2 (ERBB2)
+description: Human Epidermal Growth Factor Receptor 2, oncogene amplified in breast cancer.
+resource: https://www.uniprot.org/uniprotkb/P04626/entry
+tags: [gene, oncology, receptor]
+timestamp: 2026-07-16T20:11:00Z
+---
+# Overview
+HER2 is a member of the epidermal growth factor receptor (EGFR) family. Its amplification is associated with aggressive breast and ovarian cancers.
+
+# Target Therapies
+- [Trastuzumab](/wiki/drugs/Trastuzumab.md): Monoclonal antibody targeting the extracellular domain of HER2.
+- Lapatinib: Tyrosine kinase inhibitor targeting EGFR/HER2.
+
+# References
+- Raw source: [pub_her2_2026.pdf](/raw/pub_her2_2026.pdf)
 ```
 
-#### query_embeddings
-```sql
-CREATE TABLE query_embeddings (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  query TEXT NOT NULL,
-  embedding vector(1536) NOT NULL,
-  model VARCHAR(100) NOT NULL,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
+### 3.3 Index and Log Schema
 
-CREATE INDEX idx_query_embeddings_vector ON query_embeddings USING ivfflat (embedding vector_cosine_ops);
+#### Content Index: `wiki/index.md`
+```markdown
+# Content Index
+
+| Path | Type | Title | Description | Tags |
+|------|------|-------|-------------|------|
+| [/wiki/genes/HER2.md](/wiki/genes/HER2.md) | Gene | HER2 | EGFR receptor family gene | gene, oncology |
+| [/wiki/drugs/Trastuzumab.md](/wiki/drugs/Trastuzumab.md) | Drug | Trastuzumab | Anti-HER2 monoclonal antibody | drug, oncology |
 ```
 
-### Vector Similarity Functions
+#### Chronological Log: `wiki/log.md`
+```markdown
+# Chronological Log
 
-```sql
--- Cosine similarity search
-SELECT 
-  d.id,
-  d.title,
-  1 - (e.embedding <=> '[0.1,0.2,...]') AS similarity
-FROM document_embeddings e
-JOIN documents d ON e.document_id = d.id
-WHERE e.model = 'text-embedding-ada-002'
-ORDER BY e.embedding <=> '[0.1,0.2,...]'
-LIMIT 10;
+## [2026-07-16] ingest | HER2 Gene Profile
+- Ingested source: [pub_her2_2026.pdf](/raw/pub_her2_2026.pdf)
+- Created concept: [/wiki/genes/HER2.md](/wiki/genes/HER2.md)
+- Updated index and cross-references.
 
--- Hybrid search (keyword + vector)
--- This would be combined with OpenSearch results
+## [2026-07-15] ingest | Trastuzumab Drug Profile
+- Created concept: [/wiki/drugs/Trastuzumab.md](/wiki/drugs/Trastuzumab.md)
 ```
 
 ---

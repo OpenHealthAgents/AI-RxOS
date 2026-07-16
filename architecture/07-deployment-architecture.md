@@ -125,64 +125,8 @@ spec:
     app: api-gateway
 ```
 
-### 2. Identity Service
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: identity-service
-  namespace: ai-rxos-production
-spec:
-  replicas: 3
-  selector:
-    matchLabels:
-      app: identity-service
-  template:
-    metadata:
-      labels:
-        app: identity-service
-    spec:
-      containers:
-      - name: identity-service
-        image: ai-rxos/identity-service:v1.0.0
-        ports:
-        - containerPort: 8080
-        env:
-        - name: DATABASE_URL
-          valueFrom:
-            secretKeyRef:
-              name: database-secrets
-              key: url
-        resources:
-          requests:
-            cpu: 250m
-            memory: 256Mi
-          limits:
-            cpu: 1000m
-            memory: 1Gi
----
-apiVersion: autoscaling/v2
-kind: HorizontalPodAutoscaler
-metadata:
-  name: identity-service-hpa
-  namespace: ai-rxos-production
-spec:
-  scaleTargetRef:
-    apiVersion: apps/v1
-    kind: Deployment
-    name: identity-service
-  minReplicas: 3
-  maxReplicas: 10
-  metrics:
-  - type: Resource
-    resource:
-      name: cpu
-      target:
-        type: Utilization
-        averageUtilization: 70
-```
 
-### 3. Graph Service (Neo4j)
+### 2. Graph Service (Neo4j)
 ```yaml
 apiVersion: apps/v1
 kind: StatefulSet
@@ -230,7 +174,7 @@ spec:
           storage: 500Gi
 ```
 
-### 4. Inference Service (GPU)
+### 3. Inference Service (GPU)
 ```yaml
 apiVersion: apps/v1
 kind: Deployment
@@ -291,7 +235,7 @@ spec:
         averageUtilization: 80
 ```
 
-### 5. Kafka Cluster
+### 4. Kafka Cluster
 ```yaml
 apiVersion: apps/v1
 kind: StatefulSet

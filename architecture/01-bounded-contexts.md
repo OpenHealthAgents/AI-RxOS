@@ -3,37 +3,45 @@
 ## Overview
 AI-RxOS is organized into 12 bounded contexts based on Domain-Driven Design principles. Each context has clear boundaries, owns its data, and exposes well-defined APIs.
 
+The **Identity & Access (Auth) Context** is implemented in Node.js/TypeScript to support the Better Auth framework, while the rest of the application services (like Knowledge Graph, AI Orchestration, and Molecule Discovery) are built using Go and Python to optimize performance and ML integration.
+
 ---
 
 ## 1. Identity & Access Context
-**Purpose:** Authentication, authorization, and user management
+**Purpose:** Authentication, authorization, and user management using the Better Auth framework (utilizing official `organization`, `admin` [RBAC], and `api-key` plugins)
 
 **Core Concepts:**
 - User
-- Role
-- Permission
-- Organization
-- Workspace
-- Project
-- API Key
-- Session
+- Account (linked authentication providers)
+- Session (better-auth session management)
+- Organization (better-auth team/organization)
+- Member (organization membership with roles)
+- Role (better-auth role-based access control)
+- Permission (granular permissions)
+- Workspace (project-level isolation)
+- Project (research project)
+- API Key (service account authentication)
 - Audit Log
 
 **Responsibilities:**
-- User authentication (OAuth2, OIDC, SAML, Passkeys)
-- Role-based access control (RBAC)
-- Attribute-based access control (ABAC)
+- User authentication via better-auth (OAuth2, OIDC, Email/Password, Passkeys)
+- Multi-provider account linking (Google, GitHub, SAML, etc.)
+- Session management via better-auth (JWT + database sessions)
+- Role-based access control via better-auth roles
+- Organization/team management via better-auth organizations
 - Multi-tenant isolation (Organization → Workspace → Project)
-- API key management
-- Session management
-- Audit logging
-- Compliance monitoring
+- API key management for service accounts
+- Audit logging for all auth/authz events
+- Compliance monitoring (SOC 2, HIPAA)
 
 **Ubiquitous Language:**
-- Tenant: Organization or workspace with isolated data
+- Tenant: Organization with isolated data
 - Principal: Authenticated user or service account
-- Grant: Permission to perform an action on a resource
-- Policy: Rule governing access decisions
+- Account: External authentication provider linked to user
+- Session: Active user session managed by better-auth
+- Role: better-auth role (admin, member, etc.)
+- Permission: Granular action on a resource
+- Policy: Rule governing access decisions (RBAC + ABAC)
 
 ---
 
@@ -137,36 +145,38 @@ AI-RxOS is organized into 12 bounded contexts based on Domain-Driven Design prin
 ---
 
 ## 5. Scientific Search Context
-**Purpose:** Semantic search and retrieval across biomedical content
+**Purpose:** Semantic search and retrieval across compiled biomedical wiki content (conforming to the Open Knowledge Format)
 
 **Core Concepts:**
 - Query
-- Index
-- Document
-- Embedding
-- Vector
-- Hybrid Search
-- Semantic Similarity
+- OKF Bundle (directory of concepts)
+- OKF Concept Page
+- OKF Index (index.md)
+- OKF Change Log (log.md)
+- Local Search Engine (qmd)
+- Hybrid Search (BM25 + local vector)
+- Semantic Synthesis
 - Citation Graph
 - Ranking
 
 **Responsibilities:**
 - Keyword search (OpenSearch/Elasticsearch)
-- Vector search (pgvector, specialized vector DB)
-- Hybrid search (keyword + vector)
+- Local hybrid search over the OKF wiki bundle (using qmd CLI/MCP)
+- Wiki directory linting and contradiction checking
 - Graph search (Neo4j)
 - Citation search
 - Evidence search
-- Re-ranking
+- Re-ranking and LLM-based query synthesis
 - Query expansion
 - Faceted search
 
 **Ubiquitous Language:**
-- Index: Searchable collection of documents
-- Embedding: Vector representation of text
-- Hybrid: Combination of search methods
-- Relevance: Match quality between query and result
-- Facet: Filterable category
+- OKF Bundle: Directory of markdown pages containing structured context for agents
+- Concept Page: Markdown file representing an entity or topic with YAML metadata
+- Local Search (qmd): On-device markdown search engine using BM25 and local embeddings
+- Hybrid: Integration of keyword and local semantic search over the wiki
+- Relevance: Match quality between user queries and wiki concepts
+- Synthesis: Combining information from multiple wiki pages into a single response
 
 ---
 

@@ -11,84 +11,66 @@ This document contains Entity-Relationship (ER) diagrams for all databases in AI
 
 ```mermaid
 erDiagram
-    users ||--o{ sessions : "has"
-    users ||--o{ user_roles : "has"
-    users ||--o{ organization_members : "member of"
-    users ||--o{ workspace_members : "member of"
-    users ||--o{ project_members : "member of"
-    users ||--o{ api_keys : "owns"
-    users ||--o{ audit_logs : "performs"
+    user ||--o{ account : "has"
+    user ||--o{ session : "has"
+    user ||--o{ user_role : "has"
+    user ||--o{ member : "member of"
+    user ||--o{ workspace_member : "member of"
+    user ||--o{ project_member : "member of"
+    user ||--o{ api_key : "owns"
+    user ||--o{ audit_log : "performs"
     
-    roles ||--o{ role_permissions : "has"
-    permissions ||--o{ role_permissions : "assigned to"
+    role ||--o{ user_role : "assigned in"
     
-    organizations ||--o{ organization_members : "has members"
-    organizations ||--o{ workspaces : "contains"
+    organization ||--o{ member : "has members"
+    organization ||--o{ workspace : "contains"
     
-    workspaces ||--o{ workspace_members : "has members"
-    workspaces ||--o{ projects : "contains"
+    workspace ||--o{ workspace_member : "has members"
+    workspace ||--o{ project : "contains"
     
-    projects ||--o{ project_members : "has members"
+    project ||--o{ project_member : "has members"
     
-    users {
+    user {
         uuid id PK
         varchar email UK
-        varchar password_hash
-        varchar first_name
-        varchar last_name
-        varchar avatar_url
         boolean email_verified
-        boolean mfa_enabled
-        varchar mfa_secret
-        timestamp last_login_at
+        varchar name
+        varchar avatar_url
         timestamp created_at
         timestamp updated_at
-        timestamp deleted_at
     }
     
-    sessions {
+    account {
+        uuid id PK
+        varchar account_id
+        varchar provider_id
+        uuid user_id FK
+        text access_token
+        text refresh_token
+        text id_token
+        timestamp expires_at
+        text password
+    }
+    
+    session {
         uuid id PK
         uuid user_id FK
-        varchar access_token UK
-        varchar refresh_token UK
+        timestamp expires_at
+        varchar ip_address
         varchar user_agent
-        inet ip_address
-        timestamp expires_at
-        timestamp created_at
-    }
-    
-    roles {
-        uuid id PK
-        varchar name UK
-        text description
-        boolean is_system
         timestamp created_at
         timestamp updated_at
     }
     
-    permissions {
+    verification {
         uuid id PK
-        varchar resource
-        varchar action
-        text description
-    }
-    
-    role_permissions {
-        uuid role_id FK
-        uuid permission_id FK
-    }
-    
-    user_roles {
-        uuid user_id FK
-        uuid role_id FK
-        varchar scope_type
-        uuid scope_id
-        uuid granted_by FK
-        timestamp granted_at
+        varchar identifier
+        varchar value
         timestamp expires_at
+        timestamp created_at
     }
     
-    organizations {
+    organization {
         uuid id PK
         varchar name
         varchar slug UK
@@ -102,15 +84,37 @@ erDiagram
         timestamp deleted_at
     }
     
-    organization_members {
+    member {
         uuid id PK
         uuid organization_id FK
         uuid user_id FK
         varchar role
-        timestamp joined_at
+        timestamp created_at
+        timestamp updated_at
     }
     
-    workspaces {
+    role {
+        uuid id PK
+        varchar name UK
+        text description
+        jsonb permissions
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    user_role {
+        uuid id PK
+        uuid user_id FK
+        uuid role_id FK
+        uuid organization_id FK
+        uuid workspace_id
+        uuid project_id
+        uuid granted_by FK
+        timestamp granted_at
+        timestamp expires_at
+    }
+    
+    workspace {
         uuid id PK
         uuid organization_id FK
         varchar name
@@ -121,7 +125,7 @@ erDiagram
         timestamp deleted_at
     }
     
-    workspace_members {
+    workspace_member {
         uuid id PK
         uuid workspace_id FK
         uuid user_id FK
@@ -129,7 +133,7 @@ erDiagram
         timestamp joined_at
     }
     
-    projects {
+    project {
         uuid id PK
         uuid workspace_id FK
         varchar name
@@ -141,7 +145,7 @@ erDiagram
         timestamp deleted_at
     }
     
-    project_members {
+    project_member {
         uuid id PK
         uuid project_id FK
         uuid user_id FK
@@ -149,7 +153,7 @@ erDiagram
         timestamp joined_at
     }
     
-    api_keys {
+    api_key {
         uuid id PK
         uuid user_id FK
         uuid organization_id FK
@@ -164,7 +168,7 @@ erDiagram
         timestamp revoked_at
     }
     
-    audit_logs {
+    audit_log {
         uuid id PK
         uuid user_id FK
         uuid organization_id FK
@@ -173,7 +177,7 @@ erDiagram
         varchar action
         varchar resource_type
         uuid resource_id
-        inet ip_address
+        varchar ip_address
         varchar user_agent
         jsonb metadata
         timestamp created_at
@@ -1181,30 +1185,31 @@ erDiagram
     PostgreSQL "canonical_id" -- Neo4j "canonical_id" : "Mapped via entity_mappings table"
 ```
 
-### 4.2 PostgreSQL ↔ pgvector
+### 4.2 File System ↔ LLM Wiki (OKF v0.1)
 
 ```mermaid
 erDiagram
-    PostgreSQL ||--o{ pgvector : "Embeddings"
+    FileSystem ||--o{ OKF_Concept : "Stores"
     
-    documents {
-        uuid id PK
+    OKF_Concept {
+        string file_path PK
+        string type
+        string title
+        string description
+        string resource
+        string[] tags
+        timestamp timestamp
+        text body_markdown
     }
     
-    graph_nodes {
-        uuid id PK
+    OKF_Index {
+        string file_path PK
+        text content_index_table
     }
     
-    document_embeddings {
-        uuid id PK
-        uuid document_id FK
-        vector embedding
-    }
-    
-    node_embeddings {
-        uuid id PK
-        uuid node_id FK
-        vector embedding
+    OKF_Log {
+        string file_path PK
+        text chronological_logs
     }
 ```
 
@@ -1214,11 +1219,11 @@ erDiagram
 erDiagram
     PostgreSQL ||--o{ Redis : "Caching"
     
-    users {
+    user {
         uuid id PK
     }
     
-    sessions {
+    session {
         uuid id PK
         uuid user_id FK
     }
@@ -1265,7 +1270,7 @@ erDiagram
     documents ||--o{ extracted_entities : "contains"
     extracted_entities ||--o{ entity_mappings : "resolved to"
     entity_mappings ||--o{ graph_nodes : "maps to"
-    documents ||--o{ document_embeddings : "indexed as"
+    documents ||--o{ okf_concept : "compiled to"
     documents ||--o{ document_summaries : "summarized as"
 ```
 
@@ -1273,7 +1278,7 @@ erDiagram
 
 ```mermaid
 erDiagram
-    users ||--o{ conversations : "initiates"
+    user ||--o{ conversations : "initiates"
     conversations ||--o{ messages : "contains"
     messages ||--o{ tool_calls : "triggers"
     tool_calls ||--o{ tools : "executes"
@@ -1300,11 +1305,9 @@ erDiagram
 
 | Table | Index | Type | Purpose |
 |-------|-------|------|---------|
-| users | idx_users_email | B-tree | Email lookup |
-| users | idx_users_deleted_at | Partial | Active users |
-| sessions | idx_sessions_user_id | B-tree | User sessions |
-| sessions | idx_sessions_access_token | B-tree | Token lookup |
-| sessions | idx_sessions_expires_at | B-tree | Expired sessions |
+| user | idx_user_email | B-tree | Email lookup |
+| session | idx_session_user_id | B-tree | User sessions |
+| session | idx_session_expires_at | B-tree | Expired sessions |
 | graph_nodes | idx_graph_nodes_graph_id | B-tree | Canonical ID lookup |
 | graph_nodes | idx_graph_nodes_type | B-tree | Type filtering |
 | graph_nodes | idx_graph_nodes_labels | GIN | Label search |
@@ -1335,13 +1338,7 @@ erDiagram
 | Publication | pmid | Unique | PMID lookup |
 | Publication | doi | Unique | DOI lookup |
 
-### 6.3 pgvector Indexes
 
-| Table | Index | Type | Purpose |
-|-------|-------|------|---------|
-| document_embeddings | idx_doc_embeddings_vector | IVFFlat (cosine) | Vector similarity |
-| node_embeddings | idx_node_embeddings_vector | IVFFlat (cosine) | Vector similarity |
-| query_embeddings | idx_query_embeddings_vector | IVFFlat (cosine) | Vector similarity |
 
 ---
 
@@ -1351,8 +1348,8 @@ erDiagram
 
 ```sql
 -- Foreign Key Constraints
-ALTER TABLE sessions ADD CONSTRAINT fk_sessions_user_id 
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE session ADD CONSTRAINT fk_session_user_id 
+    FOREIGN KEY (user_id) REFERENCES user(id) ON DELETE CASCADE;
 
 ALTER TABLE graph_relationships ADD CONSTRAINT fk_graph_rels_from 
     FOREIGN KEY (from_node_id) REFERENCES graph_nodes(id) ON DELETE CASCADE;
@@ -1361,12 +1358,12 @@ ALTER TABLE graph_relationships ADD CONSTRAINT fk_graph_rels_to
     FOREIGN KEY (to_node_id) REFERENCES graph_nodes(id) ON DELETE CASCADE;
 
 -- Unique Constraints
-ALTER TABLE users ADD CONSTRAINT uq_users_email UNIQUE (email);
+ALTER TABLE user ADD CONSTRAINT uq_user_email UNIQUE (email);
 ALTER TABLE graph_nodes ADD CONSTRAINT uq_graph_nodes_graph_id UNIQUE (graph_id);
 ALTER TABLE documents ADD CONSTRAINT uq_documents_source_doc_id UNIQUE (source_document_id);
 
 -- Check Constraints
-ALTER TABLE users ADD CONSTRAINT chk_users_email 
+ALTER TABLE user ADD CONSTRAINT chk_user_email 
     CHECK (email ~* '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$');
 
 ALTER TABLE molecules ADD CONSTRAINT chk_molecules_molecular_weight 
@@ -1404,18 +1401,18 @@ CREATE CONSTRAINT node_exists FOR (n:Disease) REQUIRE n.id IS NOT NULL;
 ### 8.1 PostgreSQL Partitioning
 
 ```sql
--- Partition audit_logs by date
-CREATE TABLE audit_logs (
+-- Partition audit_log by date
+CREATE TABLE audit_log (
     id UUID,
     user_id UUID,
     action VARCHAR(100),
     created_at TIMESTAMP WITH TIME ZONE
 ) PARTITION BY RANGE (created_at);
 
-CREATE TABLE audit_logs_2024_q1 PARTITION OF audit_logs
+CREATE TABLE audit_log_2024_q1 PARTITION OF audit_log
     FOR VALUES FROM ('2024-01-01') TO ('2024-04-01');
 
-CREATE TABLE audit_logs_2024_q2 PARTITION OF audit_logs
+CREATE TABLE audit_log_2024_q2 PARTITION OF audit_log
     FOR VALUES FROM ('2024-04-01') TO ('2024-07-01');
 
 -- Partition documents by publication date

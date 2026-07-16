@@ -12,35 +12,58 @@ sequenceDiagram
     participant User as Research Scientist
     participant WebApp as Web Application
     participant APIGateway as API Gateway
-    participant IdentityService as Identity Service
-    participant AuthorizationService as Authorization Service
+    participant AuthService as Auth Service (Better Auth)
     participant PostgreSQL as PostgreSQL
     participant Redis as Redis
     
     User->>WebApp: Enter credentials
-    WebApp->>APIGateway: POST /api/v1/auth/login
-    APIGateway->>IdentityService: gRPC Login
-    IdentityService->>PostgreSQL: Query user by email
-    PostgreSQL-->>IdentityService: User record
-    IdentityService->>IdentityService: Verify password hash
-    IdentityService->>IdentityService: Check MFA if enabled
+    WebApp->>APIGateway: POST /api/v1/auth/sign-in/email
+    APIGateway->>AuthService: Route POST /api/v1/auth/sign-in/email
+    AuthService->>PostgreSQL: Query user/account by email
+    PostgreSQL-->>AuthService: User & password hash
+    AuthService->>AuthService: Verify password hash
+    AuthService->>AuthService: Check MFA if enabled
     
     alt MFA Enabled
-        IdentityService-->>WebApp: Return MFA challenge
+        AuthService-->>WebApp: Return MFA challenge
         WebApp->>User: Request MFA code
         User->>WebApp: Enter MFA code
-        WebApp->>APIGateway: POST /api/v1/auth/mfa/verify
-        APIGateway->>IdentityService: gRPC VerifyMFA
-        IdentityService->>IdentityService: Verify MFA code
+        WebApp->>APIGateway: POST /api/v1/auth/sign-in/mfa
+        APIGateway->>AuthService: Route POST /api/v1/auth/sign-in/mfa
+        AuthService->>AuthService: Verify MFA code
     end
     
-    IdentityService->>IdentityService: Generate JWT tokens
-    IdentityService->>PostgreSQL: Create session record
-    IdentityService->>Redis: Cache session data
-    IdentityService-->>APIGateway: Access token, refresh token
-    APIGateway-->>WebApp: Tokens
-    WebApp->>WebApp: Store tokens securely
+    AuthService->>PostgreSQL: Create session record
+    AuthService->>Redis: Cache session data
+    AuthService->>AuthService: Generate & Sign JWT (with UUID claims)
+    AuthService-->>APIGateway: Return Session details & JWT token
+    APIGateway-->>WebApp: Return Session cookie & JWT
+    WebApp->>WebApp: Store JWT token securely
     WebApp-->>User: Login successful
+```
+
+### 1.2 Inter-Service Token Validation Flow (Local JWKS)
+
+```mermaid
+sequenceDiagram
+    participant WebApp as Web Application
+    participant Microservice as Downstream Microservice
+    participant AuthService as Auth Service (Better Auth)
+    
+    WebApp->>Microservice: API Request with Bearer JWT
+    alt JWKS Keys not cached
+        Microservice->>AuthService: GET /api/v1/auth/jwks
+        AuthService-->>Microservice: Return JSON Web Key Set (JWKS)
+        Microservice->>Microservice: Cache JWKS public keys
+    end
+    Microservice->>Microservice: Verify JWT signature locally
+    Microservice->>Microservice: Validate expiration & scopes
+    alt Token Valid
+        Microservice->>Microservice: Process Request
+        Microservice-->>WebApp: API Response (Success)
+    else Token Invalid / Expired
+        Microservice-->>WebApp: HTTP 401 Unauthorized
+    end
 ```
 
 ---
@@ -58,7 +81,8 @@ sequenceDiagram
     participant EntityResolution as Entity Resolution Service
     participant GraphService as Graph Service
     participant Neo4j as Neo4j
-    participant IndexingService as Indexing Service
+    participant OKFCompilerService as OKF Compiler Service
+    participant OKFWiki as LLM Wiki (OKF Volume)
     participant OpenSearch as OpenSearch
     participant InferenceService as Inference Service
     
@@ -93,13 +117,11 @@ sequenceDiagram
     Neo4j-->>GraphService: Success
     GraphService->>Kafka: Publish node.created event
     
-    Kafka->>IndexingService: Consume node.created
-    IndexingService->>PostgreSQL: Load node data
-    IndexingService->>InferenceService: Request embeddings
-    InferenceService-->>IndexingService: Embeddings
-    IndexingService->>PostgreSQL: Store embeddings (pgvector)
-    IndexingService->>OpenSearch: Index document
-    IndexingService->>Kafka: Publish document.indexed event
+    Kafka->>OKFCompilerService: Consume node.created
+    OKFCompilerService->>PostgreSQL: Load node and document data
+    OKFCompilerService->>OKFCompilerService: Compile OKF Concept Markdown
+    OKFCompilerService->>OKFWiki: Write Markdown page & update index/log
+    OKFCompilerService->>Kafka: Publish okf.concept.compiled event
 ```
 
 ---
@@ -292,11 +314,11 @@ sequenceDiagram
     participant SearchService as Search Service
     participant QueryParser as Query Parser
     participant KeywordSearcher as Keyword Searcher
-    participant VectorSearcher as Vector Searcher
+    participant QmdSearcher as Qmd Wiki Searcher
     participant GraphSearcher as Graph Searcher
     participant ResultRanker as Result Ranker
     participant OpenSearch as OpenSearch
-    participant PostgreSQL as PostgreSQL (pgvector)
+    participant OKFWiki as LLM Wiki (OKF Volume)
     participant GraphService as Graph Service
     participant InferenceService as Inference Service
     
@@ -314,13 +336,13 @@ sequenceDiagram
         KeywordSearcher->>OpenSearch: Execute search
         OpenSearch-->>KeywordSearcher: Keyword results
         KeywordSearcher-->>SearchService: Keyword results
-    and Vector Search
-        SearchService->>InferenceService: Generate query embedding
-        InferenceService-->>SearchService: Embedding
-        SearchService->>VectorSearcher: Search vectors
-        VectorSearcher->>PostgreSQL: Vector similarity search
-        PostgreSQL-->>VectorSearcher: Vector results
-        VectorSearcher-->>SearchService: Vector results
+    and OKF Wiki Search
+        SearchService->>QmdSearcher: Search wiki concepts (qmd)
+        QmdSearcher->>InferenceService: Generate query embedding (optional)
+        InferenceService-->>QmdSearcher: Embedding
+        QmdSearcher->>OKFWiki: Query concepts (qmd hybrid search)
+        OKFWiki-->>QmdSearcher: Wiki results & references
+        QmdSearcher-->>SearchService: Wiki results
     and Graph Search
         SearchService->>GraphSearcher: Search graph
         GraphSearcher->>GraphService: Query graph
@@ -898,7 +920,7 @@ This document provides sequence diagrams for the following key workflows:
 3. **AI Agent Conversation Flow** - Agent invocation, tool execution, context management
 4. **Molecule Discovery Flow** - Molecule generation, docking, ADMET prediction
 5. **Knowledge Graph Query Flow** - Graph querying, caching, entity resolution
-6. **Scientific Search Flow** - Hybrid search (keyword, vector, graph)
+6. **Scientific Search Flow** - Hybrid search (keyword, OKF wiki, graph)
 7. **Clinical Trial Prediction Flow** - Trial data extraction, prediction
 8. **Portfolio Scoring Flow** - Multi-dimensional asset scoring
 9. **Competitive Intelligence Flow** - Competitor monitoring, analysis
