@@ -1,0 +1,30 @@
+# Never let a host install leak into a Docker build context — every service
+# Dockerfile installs its own deps inside the image.
+node_modules
+**/node_modules
+.pnpm-store
+.turbo
+**/.turbo
+.next
+**/.next
+dist
+**/dist
+bin
+**/bin
+__pycache__
+**/__pycache__
+.venv
+**/.venv
+.pytest_cache
+**/.pytest_cache
+
+.git
+.github
+.env
+.env.*
+!.env.example
+
+*.md
+architecture/
+assets/
+infra/helm/**/charts/*.tgz

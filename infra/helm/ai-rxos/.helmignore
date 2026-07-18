@@ -1,0 +1,7 @@
+# Patterns to ignore when packaging this chart (does NOT apply to charts/
+# dependency archives or Chart.lock — those must ship with the chart).
+.git/
+.gitignore
+*.orig
+*.bak
+.DS_Store

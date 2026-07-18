@@ -1,0 +1,16 @@
+{
+  "name": "@ai-rxos/auth",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "go run ./cmd/auth",
+    "build": "go build -o bin/auth ./cmd/auth",
+    "lint": "gofmt -l . && go vet ./...",
+    "test": "go test ./...",
+    "typecheck": "go vet ./...",
+    "clean": "rimraf bin"
+  },
+  "devDependencies": {
+    "rimraf": "^6.0.1"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "name": "@ai-rxos/api-gateway",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "go run ./cmd/gateway",
+    "build": "go build -o bin/gateway ./cmd/gateway",
+    "lint": "gofmt -l . && go vet ./...",
+    "test": "go test ./...",
+    "typecheck": "go vet ./...",
+    "clean": "rimraf bin"
+  },
+  "devDependencies": {
+    "rimraf": "^6.0.1"
+  }
+}

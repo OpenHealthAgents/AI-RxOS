@@ -1,0 +1,16 @@
+{
+  "name": "@ai-rxos/kg",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "uvicorn app.main:app --reload --port 8083",
+    "build": "python -m compileall app",
+    "lint": "ruff check app",
+    "test": "pytest -q",
+    "typecheck": "mypy app --ignore-missing-imports",
+    "clean": "rimraf __pycache__ .pytest_cache"
+  },
+  "devDependencies": {
+    "rimraf": "^6.0.1"
+  }
+}

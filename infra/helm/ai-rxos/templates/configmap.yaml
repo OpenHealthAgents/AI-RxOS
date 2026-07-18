@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ai-rxos.fullname" . }}-config
+  namespace: {{ include "ai-rxos.namespace" . }}
+  labels:
+    {{- include "ai-rxos.labels" . | nindent 4 }}
+data:
+  ENVIRONMENT: {{ .Values.global.environment | quote }}
+  POSTGRES_HOST: {{ .Values.config.postgresHost | quote }}
+  POSTGRES_PORT: {{ .Values.config.postgresPort | quote }}
+  POSTGRES_DB: {{ .Values.config.postgresDb | quote }}
+  POSTGRES_USER: {{ .Values.config.postgresUser | quote }}
+  NEO4J_URI: {{ .Values.config.neo4jUri | quote }}
+  NEO4J_USER: {{ .Values.config.neo4jUser | quote }}
+  REDIS_URL: {{ .Values.config.redisUrl | quote }}
+  OPENSEARCH_URL: {{ .Values.config.opensearchUrl | quote }}
+  OPENSEARCH_USER: {{ .Values.config.opensearchUser | quote }}
+  CORS_ALLOW_ORIGIN: {{ .Values.config.corsAllowOrigin | quote }}
+  SEARCH_RETRIEVAL_PROVIDER: {{ .Values.config.searchRetrievalProvider | quote }}
+  LLM_WIKI_URL: {{ .Values.config.llmWikiUrl | quote }}
+  GOOGLE_OKF_URL: {{ .Values.config.googleOkfUrl | quote }}
+  {{- $fullname := include "ai-rxos.fullname" . }}
+  {{- range $name, $svc := .Values.services }}
+  {{- if $svc.enabled }}
+  {{ upper (replace "-" "_" $name) }}_SERVICE_URL: {{ printf "http://%s-%s:%v" $fullname $name $svc.port | quote }}
+  {{- end }}
+  {{- end }}

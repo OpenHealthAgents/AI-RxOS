@@ -1,0 +1,226 @@
+name: ai-rxos
+
+x-py-service: &py-service
+  env_file: .env
+  networks: [ai-rxos]
+  restart: unless-stopped
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+
+networks:
+  ai-rxos:
+    driver: bridge
+
+volumes:
+  postgres-data:
+  neo4j-data:
+  redis-data:
+  opensearch-data:
+
+services:
+  # ── Data stores ──────────────────────────────────────────────────────
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-ai_rxos}
+      POSTGRES_USER: ${POSTGRES_USER:-ai_rxos}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+    ports: ["5432:5432"]
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ai_rxos}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks: [ai-rxos]
+    restart: unless-stopped
+
+  neo4j:
+    image: neo4j:5.26-community
+    environment:
+      NEO4J_AUTH: ${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:-changeme_neo4j}
+      NEO4J_server_memory_pagecache_size: 512M
+      NEO4J_server_memory_heap_max__size: 1G
+    ports:
+      - "7474:7474" # browser
+      - "7687:7687" # bolt
+    volumes:
+      - neo4j-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:7474 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [ai-rxos]
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks: [ai-rxos]
+    restart: unless-stopped
+
+  opensearch:
+    image: opensearchproject/opensearch:2.19.1
+    environment:
+      discovery.type: single-node
+      DISABLE_SECURITY_PLUGIN: "false"
+      OPENSEARCH_INITIAL_ADMIN_PASSWORD: ${OPENSEARCH_PASSWORD:-AiRxOS#Search9K}
+      OPENSEARCH_JAVA_OPTS: "-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+    volumes:
+      - opensearch-data:/usr/share/opensearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sku admin:${OPENSEARCH_PASSWORD:-AiRxOS#Search9K} https://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+    networks: [ai-rxos]
+    restart: unless-stopped
+
+  # ── Go services ──────────────────────────────────────────────────────
+  auth:
+    build: { context: ., dockerfile: services/auth/Dockerfile }
+    env_file: .env
+    environment:
+      PORT: "8081"
+    ports: ["8081:8081"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    networks: [ai-rxos]
+    restart: unless-stopped
+
+  search:
+    build: { context: ., dockerfile: services/search/Dockerfile }
+    env_file: .env
+    environment:
+      PORT: "8084"
+    ports: ["8084:8084"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      opensearch: { condition: service_healthy }
+    networks: [ai-rxos]
+    restart: unless-stopped
+
+  # BetterAuth adapter scaffold (see services/auth-adapter/README.md).
+  # Additive: `auth` above is unchanged and still owns /api/v1/auth/*.
+  # Not in api-gateway's depends_on/proxy — not routed to yet.
+  auth-adapter:
+    build: { context: ., dockerfile: services/auth-adapter/Dockerfile }
+    env_file: .env
+    environment:
+      PORT: "8089"
+      BETTER_AUTH_URL: "http://localhost:8089"
+    ports: ["8089:8089"]
+    depends_on:
+      postgres: { condition: service_healthy }
+    networks: [ai-rxos]
+    restart: unless-stopped
+
+  api-gateway:
+    build: { context: ., dockerfile: apps/api-gateway/Dockerfile }
+    env_file: .env
+    environment:
+      PORT: "8080"
+    ports: ["8080:8080"]
+    depends_on: [auth, search, literature, kg, agents, workflows, reports, docking, ai-services, knowledge-service]
+    networks: [ai-rxos]
+    restart: unless-stopped
+
+  # ── Python services ──────────────────────────────────────────────────
+  literature:
+    <<: *py-service
+    build: { context: ., dockerfile: services/literature/Dockerfile }
+    environment:
+      PORT: "8082"
+    ports: ["8082:8082"]
+
+  kg:
+    <<: *py-service
+    build: { context: ., dockerfile: services/kg/Dockerfile }
+    environment:
+      PORT: "8083"
+    ports: ["8083:8083"]
+    depends_on:
+      neo4j: { condition: service_healthy }
+
+  agents:
+    <<: *py-service
+    build: { context: ., dockerfile: services/agents/Dockerfile }
+    environment:
+      PORT: "8085"
+    ports: ["8085:8085"]
+
+  workflows:
+    <<: *py-service
+    build: { context: ., dockerfile: services/workflows/Dockerfile }
+    environment:
+      PORT: "8086"
+    ports: ["8086:8086"]
+
+  reports:
+    <<: *py-service
+    build: { context: ., dockerfile: services/reports/Dockerfile }
+    environment:
+      PORT: "8087"
+    ports: ["8087:8087"]
+
+  docking:
+    <<: *py-service
+    build: { context: ., dockerfile: services/docking/Dockerfile }
+    environment:
+      PORT: "8088"
+    ports: ["8088:8088"]
+
+  ai-services:
+    <<: *py-service
+    build: { context: ., dockerfile: apps/ai-services/Dockerfile }
+    environment:
+      PORT: "8090"
+    ports: ["8090:8090"]
+
+  knowledge-service:
+    <<: *py-service
+    build: { context: ., dockerfile: apps/knowledge-service/Dockerfile }
+    environment:
+      PORT: "8091"
+    ports: ["8091:8091"]
+    depends_on:
+      neo4j: { condition: service_healthy }
+
+  # ── Frontends ────────────────────────────────────────────────────────
+  web:
+    build: { context: ., dockerfile: apps/web/Dockerfile }
+    env_file: .env
+    environment:
+      PORT: "3000"
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:8080
+    ports: ["3000:3000"]
+    depends_on: [api-gateway]
+    networks: [ai-rxos]
+    restart: unless-stopped
+
+  admin:
+    build: { context: ., dockerfile: apps/admin/Dockerfile }
+    env_file: .env
+    environment:
+      PORT: "3001"
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:8080
+    ports: ["3001:3001"]
+    depends_on: [api-gateway]
+    networks: [ai-rxos]
+    restart: unless-stopped

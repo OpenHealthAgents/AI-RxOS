@@ -1,0 +1,53 @@
+## Prod overlay: helm install ai-rxos infra/helm/ai-rxos -f values.yaml -f values-prod.yaml
+## Disables in-cluster stateful dependencies in favor of managed services
+## (see architecture/07-deployment-architecture.md), and requires secrets to
+## be pre-provisioned out-of-band rather than templated from values.
+global:
+  environment: production
+  imageRegistry: "ghcr.io/openhealthagents"
+  imagePullPolicy: IfNotPresent
+
+ingress:
+  enabled: true
+  tls:
+    enabled: true
+  hosts:
+    web: app.ai-rxos.com
+    admin: admin.ai-rxos.com
+    api: api.ai-rxos.com
+
+# Managed AWS services instead of in-cluster StatefulSets:
+postgresql:
+  enabled: false
+redis:
+  enabled: false
+neo4j:
+  enabled: false
+opensearch:
+  enabled: false
+
+config:
+  postgresHost: "ai-rxos-prod.cluster-xxxx.us-east-1.rds.amazonaws.com"
+  postgresPort: "5432"
+  postgresDb: ai_rxos
+  postgresUser: ai_rxos
+  neo4jUri: "bolt+s://ai-rxos-prod.databases.neo4j.io:7687"
+  neo4jUser: neo4j
+  redisUrl: "rediss://ai-rxos-prod.xxxxx.cache.amazonaws.com:6379/0"
+  opensearchUrl: "https://vpc-ai-rxos-search-xxxx.us-east-1.es.amazonaws.com"
+  opensearchUser: admin
+  corsAllowOrigin: "https://app.ai-rxos.com"
+
+# Secrets are provisioned by External Secrets Operator from AWS Secrets
+# Manager in prod — the chart never templates real credentials for this env.
+externalSecret:
+  enabled: true
+  name: ai-rxos-secrets
+
+services:
+  web: { autoscaling: { minReplicas: 3, maxReplicas: 12 } }
+  admin: { autoscaling: { minReplicas: 2, maxReplicas: 6 } }
+  api-gateway: { autoscaling: { minReplicas: 5, maxReplicas: 20 } }
+  docking:
+    gpu: { enabled: true }
+    autoscaling: { minReplicas: 2, maxReplicas: 20 }

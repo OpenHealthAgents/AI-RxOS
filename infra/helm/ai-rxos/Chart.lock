@@ -1,0 +1,15 @@
+dependencies:
+- name: postgresql
+  repository: https://charts.bitnami.com/bitnami
+  version: 16.2.4
+- name: redis
+  repository: https://charts.bitnami.com/bitnami
+  version: 20.2.1
+- name: neo4j
+  repository: https://helm.neo4j.com/neo4j
+  version: 5.26.28
+- name: opensearch
+  repository: https://opensearch-project.github.io/helm-charts
+  version: 2.24.0
+digest: sha256:ed4aeb675649c8cebc78c58a54f9bf02c0ce0ff5ccd91c6f6d44c8ef4519931c
+generated: "2026-07-15T21:15:18.410173+05:30"

@@ -1,0 +1,34 @@
+# Raw namespace manifests — apply once per cluster, ahead of any Helm release.
+# See architecture/07-deployment-architecture.md "Kubernetes Namespaces".
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ai-rxos-production
+  labels: { environment: production }
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ai-rxos-staging
+  labels: { environment: staging }
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ai-rxos-development
+  labels: { environment: development }
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: infrastructure
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gpu-workloads
