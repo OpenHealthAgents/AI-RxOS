@@ -1,0 +1,18 @@
+AI-RxOS has been deployed to namespace {{ include "ai-rxos.namespace" . }}.
+
+Check rollout status:
+  kubectl get pods -n {{ include "ai-rxos.namespace" . }} -w
+
+{{- if .Values.ingress.enabled }}
+
+Once the ingress controller assigns an address, the platform will be reachable at:
+  Web:   https://{{ .Values.ingress.hosts.web }}
+  Admin: https://{{ .Values.ingress.hosts.admin }}
+  API:   https://{{ .Values.ingress.hosts.api }}
+{{- else }}
+
+Ingress is disabled — use `kubectl port-forward` to reach services, e.g.:
+  kubectl port-forward -n {{ include "ai-rxos.namespace" . }} svc/{{ include "ai-rxos.fullname" . }}-api-gateway 8080:8080
+{{- end }}
+
+This release manages: {{ range $name, $svc := .Values.services }}{{ if $svc.enabled }}{{ $name }} {{ end }}{{ end }}

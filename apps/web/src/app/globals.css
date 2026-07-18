@@ -1,0 +1,58 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  @apply bg-rxos-bg text-slate-100;
+}
+
+.rxos-btn {
+  @apply inline-flex items-center justify-center rounded-md font-medium transition-colors disabled:opacity-50 disabled:pointer-events-none;
+}
+.rxos-btn-primary {
+  @apply bg-rxos-accent text-black hover:opacity-90;
+}
+.rxos-btn-secondary {
+  @apply bg-slate-700 text-white hover:bg-slate-600;
+}
+.rxos-btn-ghost {
+  @apply bg-transparent text-slate-200 hover:bg-slate-800;
+}
+.rxos-btn-danger {
+  @apply bg-red-600 text-white hover:bg-red-500;
+}
+.rxos-btn-sm {
+  @apply h-8 px-3 text-sm;
+}
+.rxos-btn-md {
+  @apply h-10 px-4 text-sm;
+}
+.rxos-btn-lg {
+  @apply h-12 px-6 text-base;
+}
+
+.rxos-card {
+  @apply rounded-lg border border-slate-800 bg-rxos-surface p-5;
+}
+.rxos-card-title {
+  @apply mb-3 text-lg font-semibold;
+}
+
+.rxos-badge {
+  @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium;
+}
+.rxos-badge-neutral {
+  @apply bg-slate-700 text-slate-100;
+}
+.rxos-badge-success {
+  @apply bg-emerald-700 text-emerald-100;
+}
+.rxos-badge-warning {
+  @apply bg-amber-700 text-amber-100;
+}
+.rxos-badge-danger {
+  @apply bg-red-700 text-red-100;
+}
+.rxos-badge-info {
+  @apply bg-sky-700 text-sky-100;
+}

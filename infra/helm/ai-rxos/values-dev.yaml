@@ -1,0 +1,20 @@
+## Dev overlay: helm install ai-rxos infra/helm/ai-rxos -f values.yaml -f values-dev.yaml
+global:
+  environment: development
+  imageRegistry: "" # use locally-built images (docker compose / kind load)
+  imagePullPolicy: IfNotPresent
+
+ingress:
+  enabled: false # use kubectl port-forward locally instead
+
+postgresql:
+  enabled: true
+redis:
+  enabled: true
+neo4j:
+  enabled: true
+opensearch:
+  enabled: true
+
+externalSecret:
+  enabled: false

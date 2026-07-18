@@ -1,0 +1,16 @@
+{
+  "name": "@ai-rxos/search",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "go run ./cmd/search",
+    "build": "go build -o bin/search ./cmd/search",
+    "lint": "gofmt -l . && go vet ./...",
+    "test": "go test ./...",
+    "typecheck": "go vet ./...",
+    "clean": "rimraf bin"
+  },
+  "devDependencies": {
+    "rimraf": "^6.0.1"
+  }
+}

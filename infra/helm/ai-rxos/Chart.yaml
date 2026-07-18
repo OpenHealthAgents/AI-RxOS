@@ -1,0 +1,35 @@
+apiVersion: v2
+name: ai-rxos
+description: >-
+  AI-RxOS umbrella Helm chart — deploys all 13 application services
+  (web, admin, api-gateway, ai-services, knowledge-service, auth, literature,
+  kg, search, agents, workflows, reports, docking) plus optional in-cluster
+  PostgreSQL (pgvector), Neo4j, Redis, and OpenSearch dependencies for
+  dev/staging. Production points config at managed equivalents instead
+  (see values-prod.yaml).
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+home: https://github.com/OpenHealthAgents/AI-RxOS
+sources:
+  - https://github.com/OpenHealthAgents/AI-RxOS
+maintainers:
+  - name: AI-RxOS Platform Team
+
+dependencies:
+  - name: postgresql
+    version: "16.2.4"
+    repository: https://charts.bitnami.com/bitnami
+    condition: postgresql.enabled
+  - name: redis
+    version: "20.2.1"
+    repository: https://charts.bitnami.com/bitnami
+    condition: redis.enabled
+  - name: neo4j
+    version: "5.26.28"
+    repository: https://helm.neo4j.com/neo4j
+    condition: neo4j.enabled
+  - name: opensearch
+    version: "2.24.0"
+    repository: https://opensearch-project.github.io/helm-charts
+    condition: opensearch.enabled

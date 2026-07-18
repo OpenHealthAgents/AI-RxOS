@@ -1,0 +1,52 @@
+# dependencies
+node_modules/
+.pnpm-store/
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# build outputs
+dist/
+build/
+.next/
+out/
+bin/
+*.egg-info/
+
+# turbo
+.turbo/
+
+# env
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# go
+*.exe
+*.test
+
+# logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# editor / OS
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+
+# coverage
+coverage/
+.nyc_output/
+
+# helm (dependency archives are build artifacts; Chart.lock is committed for reproducible versions)
+infra/helm/**/charts/*.tgz
+
+# terraform (if added later)
+.terraform/
+*.tfstate
+*.tfstate.backup

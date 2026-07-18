@@ -1,0 +1,319 @@
+## Default values for ai-rxos. See values-dev.yaml / values-prod.yaml for
+## environment overlays (helm install -f values.yaml -f values-<env>.yaml).
+
+global:
+  environment: development
+  imageRegistry: "ghcr.io/openhealthagents"
+  imagePullPolicy: IfNotPresent
+  imagePullSecrets: []
+
+namespaceOverride: ""
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  fsGroup: 1000
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: false
+  capabilities:
+    drop: ["ALL"]
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/proxy-body-size: 25m
+  tls:
+    enabled: false
+    secretName: ai-rxos-tls
+  hosts:
+    web: app.ai-rxos.local
+    admin: admin.ai-rxos.local
+    api: api.ai-rxos.local
+
+# Dev/staging: spin these up in-cluster via the chart dependencies.
+# Prod: set each to `enabled: false` and point `config.*` at managed
+# equivalents (RDS, ElastiCache, Neo4j Aura/causal cluster, AWS OpenSearch).
+## Encryption at rest (self-hosted/dev clusters only): leave storageClass
+## empty to use the cluster default, or point it at a StorageClass backed
+## by an encrypted CSI driver/volume type (e.g. "gp3-encrypted" on EBS,
+## "encrypted-rwo" on GKE). This chart cannot encrypt volumes itself — it
+## only passes the StorageClass through to each subchart. Prod
+## (values-prod.yaml) disables these subcharts entirely and relies on the
+## managed AWS services' own at-rest encryption instead, which this
+## setting does not affect.
+postgresql:
+  enabled: true
+  auth:
+    username: ai_rxos
+    password: changeme
+    database: ai_rxos
+  image:
+    repository: pgvector/pgvector
+    tag: pg16
+  primary:
+    persistence:
+      size: 20Gi
+      storageClass: ""
+
+redis:
+  enabled: true
+  architecture: standalone
+  auth:
+    enabled: false
+  master:
+    persistence:
+      size: 5Gi
+      storageClass: ""
+
+neo4j:
+  enabled: true
+  neo4j:
+    name: ai-rxos
+    password: changeme_neo4j
+  volumes:
+    data:
+      mode: dynamic
+      dynamic:
+        # For at-rest encryption, point this at an encrypted StorageClass
+        # instead (see comment above postgresql:).
+        storageClassName: standard
+        requests:
+          storage: 50Gi
+
+opensearch:
+  enabled: true
+  singleNode: true
+  replicas: 1
+  persistence:
+    size: 20Gi
+    storageClass: ""
+
+# Non-secret runtime config, injected into every service as a ConfigMap.
+# Hostnames match the in-cluster dependency release names by default;
+# override in values-prod.yaml with managed-service endpoints.
+config:
+  postgresHost: ai-rxos-postgresql
+  postgresPort: "5432"
+  postgresDb: ai_rxos
+  postgresUser: ai_rxos
+  neo4jUri: "bolt://ai-rxos-neo4j:7687"
+  neo4jUser: neo4j
+  redisUrl: "redis://ai-rxos-redis-master:6379/0"
+  opensearchUrl: "http://ai-rxos-opensearch-cluster-master:9200"
+  opensearchUser: admin
+  corsAllowOrigin: "https://app.ai-rxos.local"
+  # services/search retrieval provider selection (see
+  # services/search/internal/search/provider.go). pgvector is the default
+  # and only implemented backend; llm_wiki/google_okf are placeholders.
+  searchRetrievalProvider: "pgvector"
+  llmWikiUrl: ""
+  googleOkfUrl: ""
+
+# Secrets: for dev this seeds a Kubernetes Secret directly from values
+# (fine for local clusters, NOT for prod). In prod, set
+# externalSecret.enabled=true and pre-provision `externalSecret.name`
+# via e.g. External Secrets Operator / Sealed Secrets / Vault.
+externalSecret:
+  enabled: false
+  name: ai-rxos-secrets
+  # Used only when enabled=true (see templates/external-secret.yaml).
+  secretStoreRef:
+    name: ai-rxos-secret-store
+    kind: ClusterSecretStore
+  refreshInterval: 1h
+
+secrets:
+  postgresPassword: changeme
+  neo4jPassword: changeme_neo4j
+  redisPassword: ""
+  opensearchPassword: AiRxOS#Search9K
+  jwtSecret: change_this_dev_secret_before_deploying
+  # services/auth-adapter (BetterAuth scaffold) — see
+  # services/auth-adapter/README.md.
+  betterAuthSecret: change_this_dev_secret_before_deploying
+  # services/search placeholder retrieval providers — empty until real
+  # credentials exist (see services/search/README.md).
+  llmWikiApiKey: ""
+  googleOkfApiKey: ""
+
+# One entry per deployable unit. `ingressPath` is only set for
+# externally-routed services (web, admin, api-gateway); everything else is
+# ClusterIP-only, reached through api-gateway.
+services:
+  web:
+    enabled: true
+    image: { repository: web, tag: latest }
+    port: 3000
+    replicas: 2
+    healthPath: /api/health
+    ingress: { host: web, path: / }
+    resources:
+      requests: { cpu: 100m, memory: 256Mi }
+      limits: { cpu: 500m, memory: 512Mi }
+    autoscaling: { enabled: true, minReplicas: 2, maxReplicas: 6, targetCPUUtilizationPercentage: 70 }
+    env:
+      NEXT_PUBLIC_API_BASE_URL: "https://api.ai-rxos.local"
+
+  admin:
+    enabled: true
+    image: { repository: admin, tag: latest }
+    port: 3001
+    replicas: 2
+    healthPath: /api/health
+    ingress: { host: admin, path: / }
+    resources:
+      requests: { cpu: 100m, memory: 256Mi }
+      limits: { cpu: 500m, memory: 512Mi }
+    autoscaling: { enabled: true, minReplicas: 2, maxReplicas: 4, targetCPUUtilizationPercentage: 70 }
+    env:
+      NEXT_PUBLIC_API_BASE_URL: "https://api.ai-rxos.local"
+
+  api-gateway:
+    enabled: true
+    image: { repository: api-gateway, tag: latest }
+    port: 8080
+    replicas: 3
+    healthPath: /healthz
+    ingress: { host: api, path: / }
+    resources:
+      requests: { cpu: 250m, memory: 256Mi }
+      limits: { cpu: 1000m, memory: 512Mi }
+    autoscaling: { enabled: true, minReplicas: 3, maxReplicas: 10, targetCPUUtilizationPercentage: 70 }
+    env:
+      CORS_ALLOW_ORIGIN: "https://app.ai-rxos.local"
+
+  auth:
+    enabled: true
+    image: { repository: auth, tag: latest }
+    port: 8081
+    replicas: 3
+    healthPath: /healthz
+    resources:
+      requests: { cpu: 250m, memory: 256Mi }
+      limits: { cpu: 1000m, memory: 512Mi }
+    autoscaling: { enabled: true, minReplicas: 3, maxReplicas: 10, targetCPUUtilizationPercentage: 70 }
+
+  # BetterAuth adapter scaffold (see services/auth-adapter/README.md).
+  # Additive: services/auth above is unchanged and still owns
+  # /api/v1/auth/*. Not on any ingress path yet.
+  auth-adapter:
+    enabled: true
+    image: { repository: auth-adapter, tag: latest }
+    port: 8089
+    replicas: 1
+    healthPath: /healthz
+    resources:
+      requests: { cpu: 100m, memory: 256Mi }
+      limits: { cpu: 500m, memory: 512Mi }
+    autoscaling: { enabled: false }
+
+  literature:
+    enabled: true
+    image: { repository: literature, tag: latest }
+    port: 8082
+    replicas: 2
+    healthPath: /healthz
+    resources:
+      requests: { cpu: 250m, memory: 512Mi }
+      limits: { cpu: 1000m, memory: 1Gi }
+    autoscaling: { enabled: true, minReplicas: 2, maxReplicas: 8, targetCPUUtilizationPercentage: 70 }
+
+  kg:
+    enabled: true
+    image: { repository: kg, tag: latest }
+    port: 8083
+    replicas: 2
+    healthPath: /healthz
+    resources:
+      requests: { cpu: 250m, memory: 512Mi }
+      limits: { cpu: 1000m, memory: 1Gi }
+    autoscaling: { enabled: true, minReplicas: 2, maxReplicas: 6, targetCPUUtilizationPercentage: 70 }
+
+  search:
+    enabled: true
+    image: { repository: search, tag: latest }
+    port: 8084
+    replicas: 2
+    healthPath: /healthz
+    resources:
+      requests: { cpu: 250m, memory: 256Mi }
+      limits: { cpu: 1000m, memory: 512Mi }
+    autoscaling: { enabled: true, minReplicas: 2, maxReplicas: 8, targetCPUUtilizationPercentage: 70 }
+
+  agents:
+    enabled: true
+    image: { repository: agents, tag: latest }
+    port: 8085
+    replicas: 2
+    healthPath: /healthz
+    resources:
+      requests: { cpu: 250m, memory: 512Mi }
+      limits: { cpu: 1000m, memory: 1Gi }
+    autoscaling: { enabled: true, minReplicas: 2, maxReplicas: 8, targetCPUUtilizationPercentage: 70 }
+
+  workflows:
+    enabled: true
+    image: { repository: workflows, tag: latest }
+    port: 8086
+    replicas: 2
+    healthPath: /healthz
+    resources:
+      requests: { cpu: 250m, memory: 256Mi }
+      limits: { cpu: 1000m, memory: 512Mi }
+    autoscaling: { enabled: true, minReplicas: 2, maxReplicas: 6, targetCPUUtilizationPercentage: 70 }
+
+  reports:
+    enabled: true
+    image: { repository: reports, tag: latest }
+    port: 8087
+    replicas: 2
+    healthPath: /healthz
+    resources:
+      requests: { cpu: 250m, memory: 256Mi }
+      limits: { cpu: 1000m, memory: 512Mi }
+    autoscaling: { enabled: true, minReplicas: 2, maxReplicas: 4, targetCPUUtilizationPercentage: 70 }
+
+  docking:
+    enabled: true
+    image: { repository: docking, tag: latest }
+    port: 8088
+    replicas: 2
+    healthPath: /healthz
+    gpu:
+      enabled: false # flip true + set nodeSelector/tolerations for GPU node pools in prod
+    resources:
+      requests: { cpu: 500m, memory: 1Gi }
+      limits: { cpu: 2000m, memory: 4Gi }
+    autoscaling: { enabled: true, minReplicas: 2, maxReplicas: 6, targetCPUUtilizationPercentage: 70 }
+
+  ai-services:
+    enabled: true
+    image: { repository: ai-services, tag: latest }
+    port: 8090
+    replicas: 2
+    healthPath: /healthz
+    resources:
+      requests: { cpu: 250m, memory: 512Mi }
+      limits: { cpu: 1000m, memory: 1Gi }
+    autoscaling: { enabled: true, minReplicas: 2, maxReplicas: 8, targetCPUUtilizationPercentage: 70 }
+
+  knowledge-service:
+    enabled: true
+    image: { repository: knowledge-service, tag: latest }
+    port: 8091
+    replicas: 2
+    healthPath: /healthz
+    resources:
+      requests: { cpu: 250m, memory: 256Mi }
+      limits: { cpu: 1000m, memory: 512Mi }
+    autoscaling: { enabled: true, minReplicas: 2, maxReplicas: 6, targetCPUUtilizationPercentage: 70 }
