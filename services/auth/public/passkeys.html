@@ -1,0 +1,36 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>Passkeys</title></head>
+<body>
+  <h1>Passkeys</h1>
+  <div>
+    <button id="refresh">Refresh</button>
+    <ul id="list"></ul>
+  </div>
+  <script>
+    async function fetchPasskeys(){
+      const res = await fetch('/api/v1/auth/passkeys');
+      if(!res.ok){ alert('Failed to load passkeys'); return; }
+      const json = await res.json();
+      const list = document.getElementById('list');
+      list.innerHTML = '';
+      for(const p of json.passkeys||[]){
+        const li = document.createElement('li');
+        li.textContent = (p.name||p.providerId)+' — '+(p.accountIdentifier||'')+' — created: '+(p.createdAt||'');
+        const rename = document.createElement('button'); rename.textContent='Rename';
+        rename.onclick=async()=>{
+          const newName = prompt('New name', p.name||''); if(!newName) return;
+          await fetch('/api/v1/auth/passkeys/'+p.id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:newName})});
+          fetchPasskeys();
+        };
+        const del = document.createElement('button'); del.textContent='Revoke';
+        del.onclick=async()=>{ if(!confirm('Revoke this passkey?')) return; await fetch('/api/v1/auth/passkeys/'+p.id,{method:'DELETE'}); fetchPasskeys(); };
+        li.appendChild(rename); li.appendChild(del);
+        list.appendChild(li);
+      }
+    }
+    document.getElementById('refresh').onclick=fetchPasskeys;
+    fetchPasskeys();
+  </script>
+</body>
+</html>

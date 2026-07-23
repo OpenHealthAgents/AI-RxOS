@@ -1,0 +1,500 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Auth - Sessions</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: Inter, system-ui, Arial, sans-serif;
+      background: #f7f9fc;
+      color: #111827;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      padding: 24px;
+    }
+
+    h1 {
+      margin: 0 0 16px;
+      font-size: 1.9rem;
+    }
+
+    .toolbar,
+    .actions {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 12px;
+      align-items: end;
+      margin-bottom: 18px;
+    }
+
+    label {
+      display: block;
+      font-size: 0.95rem;
+      color: #374151;
+    }
+
+    input,
+    select,
+    button {
+      width: 100%;
+      border: 1px solid #d1d5db;
+      border-radius: 10px;
+      padding: 10px 12px;
+      font-size: 0.95rem;
+      background: #fff;
+      color: #111827;
+    }
+
+    button {
+      cursor: pointer;
+      transition: background 0.2s ease, border-color 0.2s ease;
+    }
+
+    button:hover {
+      border-color: #9ca3af;
+    }
+
+    button.primary {
+      background: #2563eb;
+      color: #fff;
+      border-color: #2563eb;
+    }
+
+    button.primary:hover {
+      background: #1d4ed8;
+      border-color: #1d4ed8;
+    }
+
+    button.danger {
+      background: #dc2626;
+      color: #fff;
+      border-color: #dc2626;
+    }
+
+    button.danger:hover {
+      background: #b91c1c;
+      border-color: #b91c1c;
+    }
+
+    .summary {
+      font-size: 0.95rem;
+      color: #4b5563;
+      margin-bottom: 16px;
+    }
+
+    .table-container {
+      overflow-x: auto;
+      border: 1px solid #e5e7eb;
+      border-radius: 14px;
+      background: #ffffff;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 980px;
+    }
+
+    th,
+    td {
+      text-align: left;
+      padding: 14px 16px;
+      border-bottom: 1px solid #e5e7eb;
+      vertical-align: middle;
+    }
+
+    th {
+      position: sticky;
+      top: 0;
+      background: #f9fafb;
+      z-index: 1;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    th span.sort-indicator {
+      margin-left: 6px;
+      font-size: 0.78rem;
+      color: #6b7280;
+    }
+
+    tr.current-device {
+      background: #eef2ff;
+    }
+
+    tr:hover {
+      background: #f3f4f6;
+    }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      font-size: 0.8rem;
+      padding: 4px 8px;
+      border-radius: 999px;
+      background: #e0f2fe;
+      color: #0369a1;
+    }
+
+    .actions button {
+      width: auto;
+    }
+
+    .pagination {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 18px;
+    }
+
+    .pagination .pages {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .pagination button {
+      width: auto;
+      min-width: 92px;
+    }
+
+    @media (max-width: 900px) {
+      .toolbar,
+      .actions {
+        grid-template-columns: 1fr;
+      }
+
+      table {
+        min-width: 760px;
+      }
+    }
+
+    @media (max-width: 640px) {
+      body {
+        padding: 16px;
+      }
+
+      table {
+        min-width: 600px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <h1>Active Sessions</h1>
+
+  <div class="toolbar">
+    <label>
+      User ID
+      <input id="userId" placeholder="Enter user ID" autocomplete="off" />
+    </label>
+    <label>
+      Search sessions
+      <input id="search" placeholder="Search by browser, OS, IP, country, ID" autocomplete="off" />
+    </label>
+    <label>
+      Rows per page
+      <select id="pageSize">
+        <option value="10">10</option>
+        <option value="25" selected>25</option>
+        <option value="50">50</option>
+      </select>
+    </label>
+    <button id="load" class="primary">Load Sessions</button>
+  </div>
+
+  <div class="actions">
+    <button id="logoutAll" class="danger">Logout All Devices</button>
+    <div class="summary" id="summary">No sessions loaded.</div>
+  </div>
+
+  <div class="table-container">
+    <table id="sessionTable">
+      <thead>
+        <tr>
+          <th data-sort="id">Session ID <span class="sort-indicator"></span></th>
+          <th data-sort="browser">Browser <span class="sort-indicator"></span></th>
+          <th data-sort="os">OS <span class="sort-indicator"></span></th>
+          <th data-sort="ipAddress">IP Address <span class="sort-indicator"></span></th>
+          <th data-sort="country">Country <span class="sort-indicator"></span></th>
+          <th data-sort="createdAt">Login Time <span class="sort-indicator"></span></th>
+          <th data-sort="lastActivity">Last Activity <span class="sort-indicator"></span></th>
+          <th data-sort="expiresAt">Expiry <span class="sort-indicator"></span></th>
+          <th>Current Device</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <div class="pagination">
+    <div class="pages" id="pagination"></div>
+    <button id="prevPage">Previous</button>
+    <button id="nextPage">Next</button>
+  </div>
+
+  <script>
+    const userIdInput = document.getElementById('userId');
+    const searchInput = document.getElementById('search');
+    const pageSizeSelect = document.getElementById('pageSize');
+    const loadButton = document.getElementById('load');
+    const logoutAllButton = document.getElementById('logoutAll');
+    const summary = document.getElementById('summary');
+    const tbody = document.querySelector('#sessionTable tbody');
+    const paginationEl = document.getElementById('pagination');
+    const prevPageButton = document.getElementById('prevPage');
+    const nextPageButton = document.getElementById('nextPage');
+    const headers = Array.from(document.querySelectorAll('#sessionTable th[data-sort]'));
+
+    let sessions = [];
+    let currentPage = 1;
+    let pageSize = Number(pageSizeSelect.value);
+    let sortField = 'createdAt';
+    let sortDirection = 'desc';
+    let currentDeviceSignature = navigator.userAgent || '';
+    const countryCache = new Map();
+
+    function formatDate(value) {
+      if (!value) return '—';
+      return new Date(value).toLocaleString();
+    }
+
+    function normalizeText(value) {
+      return String(value ?? '').toLowerCase();
+    }
+
+    function getCurrentDeviceText(session) {
+      const sameUA = session.userAgent === currentDeviceSignature;
+      return sameUA ? '<span class="tag">Current device</span>' : '';
+    }
+
+    function getSortIcon(field) {
+      if (field !== sortField) return '';
+      return sortDirection === 'asc' ? '▲' : '▼';
+    }
+
+    function renderSummary(filteredCount) {
+      summary.textContent = `Showing ${filteredCount} session${filteredCount === 1 ? '' : 's'}. Page ${currentPage} / ${Math.max(1, Math.ceil(filteredCount / pageSize))}.`;
+    }
+
+    function sortSessions(data) {
+      return data.slice().sort((a, b) => {
+        const valueA = a[sortField] ?? '';
+        const valueB = b[sortField] ?? '';
+        if (valueA === valueB) return 0;
+        if (sortDirection === 'asc') {
+          return valueA > valueB ? 1 : -1;
+        }
+        return valueA < valueB ? 1 : -1;
+      });
+    }
+
+    function filterSessions() {
+      const term = normalizeText(searchInput.value);
+      if (!term) return sessions;
+      return sessions.filter((session) => {
+        return [
+          session.id,
+          session.browser,
+          session.os,
+          session.ipAddress,
+          session.country,
+        ].some((field) => normalizeText(field).includes(term));
+      });
+    }
+
+    function renderTable() {
+      const filtered = filterSessions();
+      const sorted = sortSessions(filtered);
+      const pageCount = Math.max(1, Math.ceil(sorted.length / pageSize));
+      currentPage = Math.min(currentPage, pageCount);
+      const offset = (currentPage - 1) * pageSize;
+      const pageRows = sorted.slice(offset, offset + pageSize);
+
+      tbody.innerHTML = '';
+      pageRows.forEach((session) => {
+        const tr = document.createElement('tr');
+        if (session.userAgent === currentDeviceSignature) tr.classList.add('current-device');
+        tr.innerHTML = `
+          <td>${session.id}</td>
+          <td>${session.browser}</td>
+          <td>${session.os}</td>
+          <td>${session.ipAddress || '—'}</td>
+          <td>${session.country || 'Unknown'}</td>
+          <td>${formatDate(session.createdAt)}</td>
+          <td>${formatDate(session.lastActivity)}</td>
+          <td>${formatDate(session.expiresAt)}</td>
+          <td>${getCurrentDeviceText(session)}</td>
+          <td><button class="primary revoke" data-id="${session.id}">Force logout</button></td>
+        `;
+        tbody.appendChild(tr);
+      });
+
+      renderSummary(filtered.length);
+      renderPagination(pageCount);
+      bindRevokeButtons();
+    }
+
+    function renderPagination(pageCount) {
+      paginationEl.innerHTML = '';
+      for (let i = 1; i <= pageCount; i += 1) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.textContent = String(i);
+        button.disabled = i === currentPage;
+        button.addEventListener('click', () => {
+          currentPage = i;
+          renderTable();
+        });
+        paginationEl.appendChild(button);
+      }
+      prevPageButton.disabled = currentPage <= 1;
+      nextPageButton.disabled = currentPage >= pageCount;
+    }
+
+    function bindRevokeButtons() {
+      tbody.querySelectorAll('button.revoke').forEach((button) => {
+        button.addEventListener('click', async () => {
+          const sessionId = button.getAttribute('data-id');
+          if (!sessionId || !userIdInput.value.trim()) return;
+          if (!confirm('Force logout this session?')) return;
+          const response = await fetch('/api/v1/auth/sessions', {
+            method: 'DELETE',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ id: sessionId, userId: userIdInput.value.trim() }),
+          });
+          if (response.status === 204) {
+            button.textContent = 'Revoked';
+            button.disabled = true;
+            sessions = sessions.filter((session) => session.id !== sessionId);
+            renderTable();
+          } else {
+            alert('Failed to revoke session');
+          }
+        });
+      });
+    }
+
+    async function enrichCountries(rows) {
+      const uniqueIps = [...new Set(rows.filter((row) => row.ipAddress).map((row) => row.ipAddress))];
+      await Promise.all(uniqueIps.map(async (ip) => {
+        if (countryCache.has(ip)) return;
+        try {
+          const res = await fetch(`https://ipwho.is/${encodeURIComponent(ip)}`);
+          if (!res.ok) throw new Error('geo failed');
+          const data = await res.json();
+          const country = data && data.country ? data.country : 'Unknown';
+          countryCache.set(ip, country);
+        } catch (err) {
+          countryCache.set(ip, 'Unknown');
+        }
+      }));
+      rows.forEach((row) => {
+        row.country = row.ipAddress ? countryCache.get(row.ipAddress) || 'Unknown' : 'Unknown';
+      });
+    }
+
+    async function loadSessions() {
+      const userId = userIdInput.value.trim();
+      if (!userId) return alert('User ID is required');
+      loadButton.disabled = true;
+      loadButton.textContent = 'Loading...';
+      try {
+        const res = await fetch(`/api/v1/auth/sessions?userId=${encodeURIComponent(userId)}`);
+        if (!res.ok) throw new Error('Failed to load sessions');
+        const data = await res.json();
+        sessions = data.sessions.map((session) => ({
+          ...session,
+          browser: session.browser || 'Unknown',
+          os: session.os || 'Unknown',
+          country: 'Loading...',
+        }));
+        currentPage = 1;
+        await enrichCountries(sessions);
+        renderTable();
+      } catch (err) {
+        alert(err.message || 'Unable to load sessions');
+      } finally {
+        loadButton.disabled = false;
+        loadButton.textContent = 'Load Sessions';
+      }
+    }
+
+    async function logoutAllDevices() {
+      const userId = userIdInput.value.trim();
+      if (!userId) return alert('User ID is required');
+      if (!confirm('Logout all sessions for this user?')) return;
+      const res = await fetch('/api/v1/auth/sessions', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId }),
+      });
+      if (res.status === 204) {
+        alert('All sessions revoked');
+        sessions = [];
+        renderTable();
+      } else {
+        alert('Failed to logout all devices');
+      }
+    }
+
+    loadButton.addEventListener('click', loadSessions);
+    logoutAllButton.addEventListener('click', logoutAllDevices);
+    searchInput.addEventListener('input', () => {
+      currentPage = 1;
+      renderTable();
+    });
+    pageSizeSelect.addEventListener('change', () => {
+      pageSize = Number(pageSizeSelect.value);
+      currentPage = 1;
+      renderTable();
+    });
+    prevPageButton.addEventListener('click', () => {
+      if (currentPage > 1) {
+        currentPage -= 1;
+        renderTable();
+      }
+    });
+    nextPageButton.addEventListener('click', () => {
+      const filtered = filterSessions();
+      const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
+      if (currentPage < pageCount) {
+        currentPage += 1;
+        renderTable();
+      }
+    });
+
+    headers.forEach((header) => {
+      header.addEventListener('click', () => {
+        const field = header.dataset.sort;
+        if (!field) return;
+        if (sortField === field) {
+          sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+        } else {
+          sortField = field;
+          sortDirection = 'asc';
+        }
+        headers.forEach((h) => {
+          const indicator = h.querySelector('.sort-indicator');
+          if (indicator) indicator.textContent = getSortIcon(h.dataset.sort);
+        });
+        renderTable();
+      });
+    });
+  </script>
+</body>
+</html>

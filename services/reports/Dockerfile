@@ -4,7 +4,11 @@ WORKDIR /app
 
 FROM base AS deps
 COPY services/reports/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install \
+    --upgrade pip \
+    --default-timeout=1000 \
+    --retries=20 \
+    -r requirements.txt
 
 FROM deps AS runtime
 RUN useradd --create-home --uid 1000 rxos
