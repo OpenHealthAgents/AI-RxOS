@@ -2,15 +2,51 @@
   "name": "@ai-rxos/auth",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
+  "dependencies": {
+    "@ai-rxos/eslint-config": "workspace:*",
+    "@ai-rxos/typescript-config": "workspace:*",
+    "@aws-sdk/client-kms": "^3.329.0",
+    "@azure/identity": "^3.2.0",
+    "@azure/keyvault-keys": "^4.9.0",
+    "@google-cloud/kms": "^3.3.0",
+    "@better-auth/api-key": "^1.6.23",
+    "@better-auth/passkey": "^1.6.23",
+    "@better-auth/scim": "^1.6.23",
+    "@better-auth/sso": "^1.6.23",
+    "better-auth": "^1.6.23",
+    "dotenv": "^17.4.2",
+    "express": "^4.22.2",
+    "jsonwebtoken": "^9.0.3",
+    "neo4j-driver": "^5.11.0",
+    "pg": "^8.22.0",
+    "otplib": "^12.0.1",
+    "qrcode": "^1.5.1",
+    "redis": "^4.7.0"
+  },
   "scripts": {
-    "dev": "go run ./cmd/auth",
-    "build": "go build -o bin/auth ./cmd/auth",
-    "lint": "gofmt -l . && go vet ./...",
-    "test": "go test ./...",
-    "typecheck": "go vet ./...",
-    "clean": "rimraf bin"
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "lint": "eslint src --max-warnings 0",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "clean": "rimraf dist bin .turbo",
+    "neo4j:init": "tsx src/neo4jSeed.ts -- --init-schema",
+    "neo4j:seed": "tsx src/neo4jSeed.ts -- --seed",
+    "auth:rotate-keys": "tsx src/rotateKeysCli.ts"
   },
   "devDependencies": {
-    "rimraf": "^6.0.1"
+    "@ai-rxos/eslint-config": "workspace:*",
+    "@ai-rxos/typescript-config": "workspace:*",
+    "@types/express": "^4.17.21",
+    "@types/jsonwebtoken": "^9.0.7",
+    "@types/node": "^22.10.2",
+    "@types/pg": "^8.11.10",
+    "eslint": "^8.57.1",
+    "rimraf": "^6.0.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
   }
 }

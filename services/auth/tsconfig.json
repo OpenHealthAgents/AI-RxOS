@@ -1,0 +1,12 @@
+{
+  "extends": "@ai-rxos/typescript-config/base.json",
+  "compilerOptions": {
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "outDir": "dist",
+    "rootDir": "src",
+    "declaration": false,
+    "declarationMap": false
+  },
+  "include": ["src"]
+}

@@ -1,0 +1,5 @@
+neo4j==5.27.0
+asyncpg==0.30.0
+pytest==8.3.4
+pytest-asyncio==0.25.1
+python-json-logger==3.2.1
