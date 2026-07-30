@@ -5,7 +5,8 @@ from pydantic import BaseModel, Field, field_validator
 
 VALID_RELATIONSHIP_TYPES = {
     "TREATS", "TARGETS", "INTERACTS", "PRESENTED_AT",
-    "PUBLISHED_IN", "OWNED_BY", "COMPETES_WITH"
+    "PUBLISHED_IN", "OWNED_BY", "COMPETES_WITH", "VALIDATED_BY",
+    "GENERATE"
 }
 
 class RelationshipCreate(BaseModel):

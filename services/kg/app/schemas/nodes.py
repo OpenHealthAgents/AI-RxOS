@@ -5,7 +5,8 @@ from pydantic import BaseModel, Field, field_validator
 
 VALID_LABELS = {
     "Gene", "Protein", "Disease", "Drug", "Target", "Mutation",
-    "Publication", "Patent", "ClinicalTrial", "Company", "Conference"
+    "Publication", "Patent", "ClinicalTrial", "Company", "Conference",
+    "Biomarker"
 }
 
 class NodeCreate(BaseModel):

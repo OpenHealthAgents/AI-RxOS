@@ -58,6 +58,34 @@ def test_create_node(mock_create):
     assert data["label"] == "Gene"
     mock_create.assert_called_once()
 
+@patch("app.services.graph_service.GraphService.create_node")
+def test_create_biomarker_node(mock_create):
+    mock_create.return_value = {
+        "id": "a0e28f32-75d1-44bb-857e-07a82fe814e5",
+        "label": "Biomarker",
+        "name": "CA-125",
+        "description": "Cancer antigen 125 biomarker",
+        "source": "NCBI",
+        "metadata": {},
+        "created_at": "2026-07-29T00:00:00",
+        "updated_at": "2026-07-29T00:00:00"
+    }
+
+    payload = {
+        "label": "Biomarker",
+        "id": "a0e28f32-75d1-44bb-857e-07a82fe814e5",
+        "name": "CA-125",
+        "description": "Cancer antigen 125 biomarker",
+        "source": "NCBI",
+        "metadata": {}
+    }
+    res = client.post("/api/v1/graph/nodes", json=payload)
+    assert res.status_code == 201
+    data = res.json()
+    assert data["name"] == "CA-125"
+    assert data["label"] == "Biomarker"
+    mock_create.assert_called_once()
+
 @patch("app.services.graph_service.GraphService.get_node")
 def test_get_node(mock_get):
     mock_get.return_value = {

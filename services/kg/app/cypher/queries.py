@@ -20,7 +20,8 @@ VALID_DOMAIN_NODE_FILTER = """NOT n:GraphVersion
 async def create_constraints_and_indexes(tx: AsyncTransaction) -> None:
     labels = [
         "Gene", "Protein", "Disease", "Drug", "Target", "Mutation",
-        "Publication", "Patent", "ClinicalTrial", "Company", "Conference"
+        "Publication", "Patent", "ClinicalTrial", "Company", "Conference",
+        "Biomarker"
     ]
     for label in labels:
         constraint_query = f"CREATE CONSTRAINT {label.lower()}_id_unique IF NOT EXISTS FOR (n:{label}) REQUIRE n.id IS UNIQUE"

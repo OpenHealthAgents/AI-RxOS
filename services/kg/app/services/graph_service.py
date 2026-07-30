@@ -1,6 +1,6 @@
 import json
 from uuid import UUID, uuid4
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any, Tuple
 from pydantic import ValidationError
 from app.database.neo4j import neo4j_manager
@@ -36,8 +36,8 @@ class GraphService:
     @staticmethod
     async def create_node(node_in: NodeCreate) -> Dict[str, Any]:
         node_id = str(node_in.id or uuid4())
-        created_at = (node_in.created_at or datetime.utcnow()).isoformat()
-        updated_at = (node_in.updated_at or datetime.utcnow()).isoformat()
+        created_at = (node_in.created_at or datetime.now(timezone.utc)).isoformat()
+        updated_at = (node_in.updated_at or datetime.now(timezone.utc)).isoformat()
         metadata_json = json.dumps(node_in.metadata)
         
         # Get active version to tag the node
@@ -70,7 +70,7 @@ class GraphService:
     @staticmethod
     async def update_node(node_id: str, node_in: NodeUpdate) -> Optional[Dict[str, Any]]:
         max_version = await VersionService.get_max_active_version()
-        updated_at = (node_in.updated_at or datetime.utcnow()).isoformat()
+        updated_at = (node_in.updated_at or datetime.now(timezone.utc)).isoformat()
         metadata_json = json.dumps(node_in.metadata) if node_in.metadata is not None else None
         
         async with neo4j_manager.get_session() as session:
@@ -127,7 +127,7 @@ class GraphService:
     @staticmethod
     async def create_relationship(rel_in: RelationshipCreate) -> Optional[Dict[str, Any]]:
         rel_id = str(rel_in.id or uuid4())
-        created_at = (rel_in.created_at or datetime.utcnow()).isoformat()
+        created_at = (rel_in.created_at or datetime.now(timezone.utc)).isoformat()
         max_version = await VersionService.get_max_active_version()
 
         async with neo4j_manager.get_session() as session:

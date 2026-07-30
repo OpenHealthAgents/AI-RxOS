@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
 from app.database.neo4j import neo4j_manager
 from app.cypher import queries
@@ -16,7 +16,7 @@ class VersionService:
         async with neo4j_manager.get_session() as session:
             version_number = await session.execute_write(queries.get_next_version_number)
             version_id = str(uuid.uuid4())
-            created_at = datetime.utcnow().isoformat()
+            created_at = datetime.now(timezone.utc).isoformat()
             desc = description or f"Import version {version_number}"
             await session.execute_write(
                 queries.create_version,

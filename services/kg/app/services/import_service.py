@@ -3,7 +3,7 @@ import io
 import json
 import time
 from uuid import UUID, uuid4
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from app.database.neo4j import neo4j_manager
 from app.cypher import queries
@@ -99,8 +99,8 @@ class ImportService:
         nodes_by_label: Dict[str, List[Dict[str, Any]]] = {}
         for node in req.nodes:
             node_id = str(node.id or uuid4())
-            created_at = (node.created_at or datetime.utcnow()).isoformat()
-            updated_at = (node.updated_at or datetime.utcnow()).isoformat()
+            created_at = (node.created_at or datetime.now(timezone.utc)).isoformat()
+            updated_at = (node.updated_at or datetime.now(timezone.utc)).isoformat()
             nodes_by_label.setdefault(node.label, []).append({
                 "id": node_id,
                 "name": node.name,
@@ -115,7 +115,7 @@ class ImportService:
         rels_by_type: Dict[str, List[Dict[str, Any]]] = {}
         for rel in req.relationships:
             rel_id = str(rel.id or uuid4())
-            created_at = (rel.created_at or datetime.utcnow()).isoformat()
+            created_at = (rel.created_at or datetime.now(timezone.utc)).isoformat()
             rels_by_type.setdefault(rel.type, []).append({
                 "id": rel_id,
                 "from_node_id": str(rel.from_node_id),
