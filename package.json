@@ -10,6 +10,8 @@
   },
   "scripts": {
     "build": "turbo run build",
+    "build:web": "turbo run build --filter=@ai-rxos/web",
+    "build:admin": "turbo run build --filter=@ai-rxos/admin",
     "dev": "turbo run dev --parallel",
     "lint": "turbo run lint",
     "test": "turbo run test",
