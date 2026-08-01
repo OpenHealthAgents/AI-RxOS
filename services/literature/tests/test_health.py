@@ -1,4 +1,8 @@
+import os
+
 from fastapi.testclient import TestClient
+
+os.environ["ENVIRONMENT"] = "test"
 
 from app.main import app
 

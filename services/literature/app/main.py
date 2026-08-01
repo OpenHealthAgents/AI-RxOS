@@ -1,78 +1,82 @@
-import uuid
-from datetime import datetime, timezone
-from typing import Literal
+from __future__ import annotations
 
-from fastapi import FastAPI
-from pydantic import BaseModel
+import time
+import uuid
+
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import get_settings
+from app.core.lifespan import lifespan
+from app.observability.metrics import (
+    REQUEST_COUNT,
+    REQUEST_ERRORS,
+    REQUEST_IN_FLIGHT,
+    REQUEST_LATENCY_SECONDS,
+)
+from app.routers.documents import router as documents_router
+from app.routers.health import router as health_router
+from app.routers.ingestion import router as ingestion_router
+from app.routers.nlp import router as nlp_router
+from app.routers.papers import router as papers_router
+from app.utils.logging import get_logger, set_request_context
 
 settings = get_settings()
+logger = get_logger(__name__)
 
 app = FastAPI(
     title="AI-RxOS Literature Service",
-    description="Ingestion, extraction, and citation services for the "
-    "Literature Intelligence bounded context.",
+    description="Ingestion, extraction, and citation services for the Literature Intelligence bounded context.",
     version="0.1.0",
+    lifespan=lifespan,
 )
 
-_PAPERS: dict[str, dict] = {}
-_INGESTION_JOBS: dict[str, dict] = {}
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_allowed_origins,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["*"],
+)
 
 
-class Paper(BaseModel):
-    id: str
-    title: str
-    source: Literal["pubmed", "biorxiv", "medrxiv", "patent", "conference"]
-    doi: str | None = None
-    publishedAt: str | None = None
-    citationCount: int = 0
+@app.middleware("http")
+async def add_request_context(request: Request, call_next):
+    request_id = request.headers.get("x-request-id") or str(uuid.uuid4())
+    trace_id = request.headers.get("x-trace-id") or str(uuid.uuid4())
+    request.state.request_id = request_id
+    request.state.trace_id = trace_id
+    set_request_context(request_id=request_id, trace_id=trace_id)
+
+    method = request.method
+    endpoint = request.url.path
+    REQUEST_IN_FLIGHT.labels(method=method, endpoint=endpoint).inc()
+    start_time = time.perf_counter()
+    try:
+        response = await call_next(request)
+        status_code = str(response.status_code)
+        REQUEST_COUNT.labels(method=method, endpoint=endpoint, status=status_code).inc()
+        if response.status_code >= 400:
+            REQUEST_ERRORS.labels(
+                method=method, endpoint=endpoint, status=status_code
+            ).inc()
+        response.headers["x-request-id"] = request_id
+        response.headers["x-trace-id"] = trace_id
+        return response
+    except Exception:
+        REQUEST_COUNT.labels(method=method, endpoint=endpoint, status="500").inc()
+        REQUEST_ERRORS.labels(method=method, endpoint=endpoint, status="500").inc()
+        raise
+    finally:
+        elapsed = time.perf_counter() - start_time
+        REQUEST_LATENCY_SECONDS.labels(method=method, endpoint=endpoint).observe(
+            elapsed
+        )
+        REQUEST_IN_FLIGHT.labels(method=method, endpoint=endpoint).dec()
 
 
-class IngestionRequest(BaseModel):
-    source: Literal["pubmed", "biorxiv", "medrxiv", "patent", "conference"]
-    query: str
-
-
-class IngestionJob(BaseModel):
-    id: str
-    source: str
-    query: str
-    status: Literal["queued", "running", "completed", "failed"]
-    createdAt: str
-
-
-@app.get("/healthz")
-def health() -> dict[str, str]:
-    return {"status": "ok", "service": "literature"}
-
-
-@app.get("/api/v1/papers")
-def list_papers(page: int = 1, page_size: int = 20) -> dict:
-    items = list(_PAPERS.values())[(page - 1) * page_size : page * page_size]
-    return {"items": items, "total": len(_PAPERS), "page": page, "pageSize": page_size}
-
-
-@app.get("/api/v1/papers/{paper_id}")
-def get_paper(paper_id: str) -> Paper | dict:
-    paper = _PAPERS.get(paper_id)
-    return paper or {"error": "not_found"}
-
-
-@app.post("/api/v1/ingestion", response_model=IngestionJob, status_code=202)
-def start_ingestion(req: IngestionRequest) -> IngestionJob:
-    job_id = str(uuid.uuid4())
-    job = IngestionJob(
-        id=job_id,
-        source=req.source,
-        query=req.query,
-        status="queued",
-        createdAt=datetime.now(timezone.utc).isoformat(),
-    )
-    _INGESTION_JOBS[job_id] = job.model_dump()
-    return job
-
-
-@app.get("/api/v1/ingestion/{job_id}")
-def get_ingestion_job(job_id: str) -> dict:
-    return _INGESTION_JOBS.get(job_id, {"error": "not_found"})
+app.include_router(health_router)
+app.include_router(papers_router, prefix="/api/v1")
+app.include_router(ingestion_router, prefix="/api/v1")
+app.include_router(documents_router, prefix="/api/v1")
+app.include_router(nlp_router, prefix="/api/v1")
