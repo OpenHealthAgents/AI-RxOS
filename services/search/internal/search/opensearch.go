@@ -5,18 +5,21 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	opensearch "github.com/opensearch-project/opensearch-go/v2"
 	opensearchapi "github.com/opensearch-project/opensearch-go/v2/opensearchapi"
 )
 
 type Client struct {
-	os    *opensearch.Client
-	index string
+	os       *opensearch.Client
+	index    string
+	shards   int
+	replicas int
 }
 
 func NewClient(url, user, password, index string) (*Client, error) {
-	os, err := opensearch.NewClient(opensearch.Config{
+	osClient, err := opensearch.NewClient(opensearch.Config{
 		Addresses: []string{url},
 		Username:  user,
 		Password:  password,
@@ -24,7 +27,21 @@ func NewClient(url, user, password, index string) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Client{os: os, index: index}, nil
+	return &Client{os: osClient, index: index, shards: 16, replicas: 1}, nil
+}
+
+func NewClientWithScaling(url, user, password, index string, shards, replicas int) (*Client, error) {
+	client, err := NewClient(url, user, password, index)
+	if err != nil {
+		return nil, err
+	}
+	if shards > 0 {
+		client.shards = shards
+	}
+	if replicas >= 0 {
+		client.replicas = replicas
+	}
+	return client, nil
 }
 
 func (c *Client) EnsureIndex(ctx context.Context) error {
@@ -35,13 +52,40 @@ func (c *Client) EnsureIndex(ctx context.Context) error {
 	if exists.StatusCode == 200 {
 		return nil
 	}
-	body := bytes.NewBufferString(`{
-		"mappings": {"properties": {
-			"title": {"type": "text"},
-			"content": {"type": "text"},
-			"source": {"type": "keyword"}
-		}}
-	}`)
+	mappingJSON := fmt.Sprintf(`{
+		"settings": {
+			"index": {
+				"number_of_shards": "%d",
+				"number_of_replicas": "%d",
+				"refresh_interval": "30s",
+				"knn": true
+			}
+		},
+		"mappings": {
+			"properties": {
+				"id": {"type": "keyword"},
+				"title": {"type": "text", "similarity": "BM25"},
+				"content": {"type": "text", "similarity": "BM25"},
+				"source": {"type": "keyword"},
+				"citations": {"type": "integer"},
+				"embedding": {
+					"type": "knn_vector",
+					"dimension": 768,
+					"method": {
+						"name": "hnsw",
+						"space_type": "cosine",
+						"engine": "nmslib",
+						"parameters": {
+							"ef_construction": 512,
+							"m": 16
+						}
+					}
+				}
+			}
+		}
+	}`, c.shards, c.replicas)
+
+	body := bytes.NewBufferString(mappingJSON)
 	req := opensearchapi.IndicesCreateRequest{Index: c.index, Body: body}
 	res, err := req.Do(ctx, c.os)
 	if err != nil {
@@ -52,10 +96,12 @@ func (c *Client) EnsureIndex(ctx context.Context) error {
 }
 
 type Document struct {
-	ID      string `json:"id"`
-	Title   string `json:"title"`
-	Content string `json:"content"`
-	Source  string `json:"source"`
+	ID        string    `json:"id"`
+	Title     string    `json:"title"`
+	Content   string    `json:"content"`
+	Source    string    `json:"source"`
+	Citations int       `json:"citations,omitempty"`
+	Embedding []float32 `json:"embedding,omitempty"`
 }
 
 func (c *Client) IndexDocument(ctx context.Context, doc Document) error {
@@ -80,11 +126,47 @@ func (c *Client) IndexDocument(ctx context.Context, doc Document) error {
 	return nil
 }
 
+// BulkIndexDocuments indexes multiple documents in a single bulk HTTP request,
+// designed for scaling throughput up to 100 million document volumes.
+func (c *Client) BulkIndexDocuments(ctx context.Context, docs []Document) error {
+	if len(docs) == 0 {
+		return nil
+	}
+	var buf strings.Builder
+	for _, doc := range docs {
+		meta := fmt.Sprintf(`{"index": {"_index": %q, "_id": %q}}`+"\n", c.index, doc.ID)
+		buf.WriteString(meta)
+		docBytes, err := json.Marshal(doc)
+		if err != nil {
+			return err
+		}
+		buf.Write(docBytes)
+		buf.WriteString("\n")
+	}
+
+	req := opensearchapi.BulkRequest{
+		Body: strings.NewReader(buf.String()),
+	}
+	res, err := req.Do(ctx, c.os)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+	if res.IsError() {
+		return fmt.Errorf("opensearch bulk error: %s", res.String())
+	}
+	return nil
+}
+
 type Hit struct {
-	ID    string  `json:"id"`
-	Score float64 `json:"score"`
-	Title string  `json:"title"`
-	Snippet string `json:"snippet"`
+	ID            string  `json:"id"`
+	Score         float64 `json:"score"`
+	Title         string  `json:"title"`
+	Snippet       string  `json:"snippet"`
+	Source        string  `json:"source,omitempty"`
+	CitationCount int     `json:"citationCount,omitempty"`
+	GraphScore    float64 `json:"graphScore,omitempty"`
+	RRFScore      float64 `json:"rrfScore,omitempty"`
 }
 
 func (c *Client) Query(ctx context.Context, q string, limit int) ([]Hit, error) {
@@ -115,8 +197,10 @@ func (c *Client) Query(ctx context.Context, q string, limit int) ([]Hit, error) 
 				ID     string  `json:"_id"`
 				Score  float64 `json:"_score"`
 				Source struct {
-					Title   string `json:"title"`
-					Content string `json:"content"`
+					Title     string `json:"title"`
+					Content   string `json:"content"`
+					Source    string `json:"source"`
+					Citations int    `json:"citations"`
 				} `json:"_source"`
 			} `json:"hits"`
 		} `json:"hits"`
@@ -127,7 +211,18 @@ func (c *Client) Query(ctx context.Context, q string, limit int) ([]Hit, error) 
 
 	hits := make([]Hit, 0, len(parsed.Hits.Hits))
 	for _, h := range parsed.Hits.Hits {
-		hits = append(hits, Hit{ID: h.ID, Score: h.Score, Title: h.Source.Title, Snippet: h.Source.Content})
+		source := h.Source.Source
+		if source == "" {
+			source = "opensearch"
+		}
+		hits = append(hits, Hit{
+			ID:            h.ID,
+			Score:         h.Score,
+			Title:         h.Source.Title,
+			Snippet:       h.Source.Content,
+			Source:        source,
+			CitationCount: h.Source.Citations,
+		})
 	}
 	return hits, nil
 }
