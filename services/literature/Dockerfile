@@ -19,9 +19,6 @@ RUN pip install \
 
 FROM deps AS runtime
 
-RUN apt-get update && apt-get install -y --no-install-recommends curl \
-    && rm -rf /var/lib/apt/lists/*
-
 RUN useradd --create-home --uid 1000 rxos
 
 COPY services/literature/app ./app
@@ -31,8 +28,5 @@ USER rxos
 EXPOSE 8082
 
 ENV PORT=8082
-
-HEALTHCHECK --interval=15s --timeout=5s --start-period=10s --retries=3 \
-    CMD curl -fsS http://127.0.0.1:8082/health || exit 1
 
 CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT}"]
