@@ -3,27 +3,18 @@ package handlers
 import (
 	"encoding/json"
 	"net/http"
-	"sort"
 	"strconv"
 
 	"github.com/openhealthagents/ai-rxos/services/search/internal/search"
 )
 
 type SearchHandler struct {
-	OpenSearch *search.Client
-	Vectors    search.RetrievalProvider
-	// VectorSource labels the "source" field of hits returned by Vectors,
-	// reflecting whichever provider is configured (see
-	// internal/search/provider.go). Defaults to "pgvector" when unset.
+	OpenSearch   *search.Client
+	Vectors      search.RetrievalProvider
 	VectorSource string
-}
-
-type searchResult struct {
-	ID      string  `json:"id"`
-	Score   float64 `json:"score"`
-	Source  string  `json:"source"`
-	Title   string  `json:"title"`
-	Snippet string  `json:"snippet"`
+	Citations    *search.CitationSearcher
+	Graph        *search.GraphSearcher
+	Ranker       *search.ResultRanker
 }
 
 type hybridRequest struct {
@@ -39,7 +30,7 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 }
 
 // Query handles GET /api/v1/search?q=...&limit=... — keyword search via
-// OpenSearch. Use POST /api/v1/search for hybrid keyword + pgvector search.
+// OpenSearch with optional citation authority enrichment.
 func (h *SearchHandler) Query(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query().Get("q")
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
@@ -57,16 +48,21 @@ func (h *SearchHandler) Query(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	items := make([]searchResult, 0, len(hits))
-	for _, hit := range hits {
-		items = append(items, searchResult{ID: hit.ID, Score: hit.Score, Source: "opensearch", Title: hit.Title, Snippet: hit.Snippet})
+	if h.Citations != nil {
+		hits = h.Citations.EnrichHits(r.Context(), hits)
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": items, "total": len(items), "page": 1, "pageSize": limit})
+
+	for i := range hits {
+		if hits[i].Source == "" {
+			hits[i].Source = "opensearch"
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": hits, "total": len(hits), "page": 1, "pageSize": limit})
 }
 
-// Hybrid handles POST /api/v1/search — merges OpenSearch keyword results
-// with pgvector cosine-similarity results (when an embedding is supplied),
-// ranked by score.
+// Hybrid handles POST /api/v1/search — multi-signal hybrid retrieval across OpenSearch BM25,
+// dense semantic vectors (LLM Wiki OKF QMD), Neo4j graph relationships, and citation networks,
+// ranked by Reciprocal Rank Fusion (RRF).
 func (h *SearchHandler) Hybrid(w http.ResponseWriter, r *http.Request) {
 	var req hybridRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -77,34 +73,50 @@ func (h *SearchHandler) Hybrid(w http.ResponseWriter, r *http.Request) {
 		req.Limit = 20
 	}
 
-	var items []searchResult
+	var bm25Hits []search.Hit
+	var vectorHits []search.Hit
 
 	if req.Query != "" {
-		hits, err := h.OpenSearch.Query(r.Context(), req.Query, req.Limit)
-		if err == nil {
-			for _, hit := range hits {
-				items = append(items, searchResult{ID: hit.ID, Score: hit.Score, Source: "opensearch", Title: hit.Title, Snippet: hit.Snippet})
+		if hits, err := h.OpenSearch.Query(r.Context(), req.Query, req.Limit*2); err == nil {
+			for i := range hits {
+				if hits[i].Source == "" {
+					hits[i].Source = "opensearch"
+				}
 			}
+			bm25Hits = hits
 		}
 	}
 
 	if len(req.Embedding) > 0 && h.Vectors != nil {
 		source := h.VectorSource
 		if source == "" {
-			source = search.ProviderPgvector
+			source = search.ProviderLLMWiki
 		}
-		hits, err := h.Vectors.SimilaritySearch(r.Context(), req.Embedding, req.Limit)
-		if err == nil {
-			for _, hit := range hits {
-				items = append(items, searchResult{ID: hit.ID, Score: hit.Score, Source: source, Title: hit.Title, Snippet: hit.Snippet})
+		if hits, err := h.Vectors.SimilaritySearch(r.Context(), req.Embedding, req.Limit*2); err == nil {
+			for i := range hits {
+				if hits[i].Source == "" {
+					hits[i].Source = source
+				}
 			}
+			vectorHits = hits
 		}
 	}
 
-	sort.Slice(items, func(i, j int) bool { return items[i].Score > items[j].Score })
-	if len(items) > req.Limit {
-		items = items[:req.Limit]
+	if h.Citations != nil {
+		bm25Hits = h.Citations.EnrichHits(r.Context(), bm25Hits)
+		vectorHits = h.Citations.EnrichHits(r.Context(), vectorHits)
+	}
+	if h.Graph != nil {
+		bm25Hits = h.Graph.EnrichHits(r.Context(), req.Query, bm25Hits)
+		vectorHits = h.Graph.EnrichHits(r.Context(), req.Query, vectorHits)
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{"items": items, "total": len(items), "page": 1, "pageSize": req.Limit})
+	ranker := h.Ranker
+	if ranker == nil {
+		ranker = search.NewResultRanker(60, 0.35, 0.35, 0.15, 0.15)
+	}
+
+	ranked := ranker.RankRRF(req.Limit, bm25Hits, vectorHits)
+
+	writeJSON(w, http.StatusOK, map[string]any{"items": ranked, "total": len(ranked), "page": 1, "pageSize": req.Limit})
 }

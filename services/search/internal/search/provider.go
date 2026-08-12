@@ -7,18 +7,15 @@ import (
 
 // RetrievalProvider is the abstraction the hybrid search handler uses for
 // the semantic/vector leg of a search (as opposed to OpenSearch's keyword
-// leg). VectorStore (pgvector) is the default, backwards-compatible
-// implementation. LLMWikiProvider and GoogleOKFProvider are placeholders
-// reserved for a future migration away from pgvector — see README.md
-// "Retrieval providers" for exactly what's needed before they can be
-// wired up for real.
+// leg). LLMWikiProvider and GoogleOKFProvider implement high-speed
+// retrieval using our Local QMD Engine and OKF microservices.
 type RetrievalProvider interface {
 	SimilaritySearch(ctx context.Context, embedding []float32, limit int) ([]Hit, error)
+	Upsert(ctx context.Context, id, title, content string, embedding []float32) error
 	Close()
 }
 
 const (
-	ProviderPgvector  = "pgvector"
 	ProviderLLMWiki   = "llm_wiki"
 	ProviderGoogleOKF = "google_okf"
 )
@@ -28,32 +25,37 @@ const (
 type ProviderConfig struct {
 	Provider string
 
-	// pgvector
-	DatabaseURL string
-
-	// llm_wiki (placeholder — see LLMWikiProvider)
+	// llm_wiki
 	LLMWikiURL    string
 	LLMWikiAPIKey string
 
-	// google_okf (placeholder — see GoogleOKFProvider)
+	// google_okf
 	GoogleOKFURL    string
 	GoogleOKFAPIKey string
+
+	// Advanced hybrid search config
+	KGServiceURL  string
+	OKFBundlePath string
+	ShardCount    int
+	Replicas      int
+	WeightBM25     float64
+	WeightVector   float64
+	WeightGraph    float64
+	WeightCitation float64
+	RRFConstantK   int
 }
 
 // NewRetrievalProvider builds the RetrievalProvider selected by
-// cfg.Provider (env var SEARCH_RETRIEVAL_PROVIDER). pgvector remains the
-// default until real LLM Wiki / Google OKF integration details (API
-// contract, auth, SDK) are available.
+// cfg.Provider (env var SEARCH_RETRIEVAL_PROVIDER). llm_wiki is the
+// default semantic provider.
 func NewRetrievalProvider(ctx context.Context, cfg ProviderConfig) (RetrievalProvider, error) {
 	switch cfg.Provider {
-	case "", ProviderPgvector:
-		return NewVectorStore(ctx, cfg.DatabaseURL)
-	case ProviderLLMWiki:
+	case "", ProviderLLMWiki:
 		return NewLLMWikiProvider(cfg)
 	case ProviderGoogleOKF:
 		return NewGoogleOKFProvider(cfg)
 	default:
-		return nil, fmt.Errorf("unknown SEARCH_RETRIEVAL_PROVIDER %q (want %q, %q, or %q)",
-			cfg.Provider, ProviderPgvector, ProviderLLMWiki, ProviderGoogleOKF)
+		return nil, fmt.Errorf("unknown SEARCH_RETRIEVAL_PROVIDER %q (want %q or %q)",
+			cfg.Provider, ProviderLLMWiki, ProviderGoogleOKF)
 	}
 }

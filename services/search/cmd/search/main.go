@@ -20,7 +20,14 @@ func main() {
 	cfg := config.Load()
 	ctx := context.Background()
 
-	osClient, err := search.NewClient(cfg.OpenSearchURL, cfg.OpenSearchUser, cfg.OpenSearchPassword, cfg.IndexName)
+	osClient, err := search.NewClientWithScaling(
+		cfg.OpenSearchURL,
+		cfg.OpenSearchUser,
+		cfg.OpenSearchPassword,
+		cfg.IndexName,
+		cfg.ShardCount,
+		cfg.Replicas,
+	)
 	if err != nil {
 		slog.Error("opensearch client init failed", "err", err)
 		os.Exit(1)
@@ -30,12 +37,20 @@ func main() {
 	}
 
 	vectors, err := search.NewRetrievalProvider(ctx, search.ProviderConfig{
-		Provider:        cfg.RetrievalProvider,
-		DatabaseURL:     cfg.DatabaseURL,
-		LLMWikiURL:      cfg.LLMWikiURL,
+		Provider:      cfg.RetrievalProvider,
+		LLMWikiURL:    cfg.LLMWikiURL,
 		LLMWikiAPIKey:   cfg.LLMWikiAPIKey,
 		GoogleOKFURL:    cfg.GoogleOKFURL,
 		GoogleOKFAPIKey: cfg.GoogleOKFAPIKey,
+		KGServiceURL:    cfg.KGServiceURL,
+		OKFBundlePath:   cfg.OKFBundlePath,
+		ShardCount:      cfg.ShardCount,
+		Replicas:        cfg.Replicas,
+		WeightBM25:      cfg.WeightBM25,
+		WeightVector:    cfg.WeightVector,
+		WeightGraph:     cfg.WeightGraph,
+		WeightCitation:  cfg.WeightCitation,
+		RRFConstantK:    cfg.RRFConstantK,
 	})
 	if err != nil {
 		slog.Error("retrieval provider init failed", "provider", cfg.RetrievalProvider, "err", err)
@@ -43,7 +58,24 @@ func main() {
 	}
 	defer vectors.Close()
 
-	h := &handlers.SearchHandler{OpenSearch: osClient, Vectors: vectors, VectorSource: cfg.RetrievalProvider}
+	citations := search.NewCitationSearcher()
+	graph := search.NewGraphSearcher(cfg.KGServiceURL)
+	ranker := search.NewResultRanker(
+		cfg.RRFConstantK,
+		cfg.WeightBM25,
+		cfg.WeightVector,
+		cfg.WeightGraph,
+		cfg.WeightCitation,
+	)
+
+	h := &handlers.SearchHandler{
+		OpenSearch:   osClient,
+		Vectors:      vectors,
+		VectorSource: cfg.RetrievalProvider,
+		Citations:    citations,
+		Graph:        graph,
+		Ranker:       ranker,
+	}
 
 	r := chi.NewRouter()
 	r.Use(middleware.Recoverer)
@@ -57,9 +89,12 @@ func main() {
 	r.Route("/api/v1/search", func(r chi.Router) {
 		r.Get("/", h.Query)
 		r.Post("/", h.Hybrid)
+		r.Post("/index", h.Index)
+		r.Get("/stream", h.StreamQuery)
+		r.Post("/stream", h.StreamHybrid)
 	})
 
-	slog.Info("search service listening", "port", cfg.Port)
+	slog.Info("search service listening", "port", cfg.Port, "provider", cfg.RetrievalProvider, "shards", cfg.ShardCount)
 	if err := http.ListenAndServe(":"+cfg.Port, r); err != nil {
 		slog.Error("server stopped", "err", err)
 		os.Exit(1)
