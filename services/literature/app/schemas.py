@@ -25,9 +25,7 @@ class IngestionJob(BaseModel):
     id: str
     source: str
     query: str
-    status: Literal[
-        "queued", "scheduled", "running", "completed", "failed", "cancelled"
-    ]
+    status: str
     created_at: datetime
     started_at: datetime | None = None
     completed_at: datetime | None = None
@@ -41,6 +39,7 @@ class IngestionJob(BaseModel):
     error_message: str | None = None
     dead_letter_count: int = 0
     dead_letter_items: list[dict[str, Any]] = Field(default_factory=list)
+    result: dict[str, Any] | None = None
 
 
 class DocumentParseRequest(BaseModel):

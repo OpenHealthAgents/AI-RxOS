@@ -175,5 +175,39 @@ LLMWIKI_UPDATE_DURATION_SECONDS = Histogram(
 )
 
 
+from typing import Any
+
+
 def generate_prometheus_metrics() -> bytes:
     return generate_latest(registry)
+
+
+class GeneralMetrics:
+    def __init__(self) -> None:
+        self.counters: dict[str, int] = {}
+
+    def increment(self, name: str, amount: int = 1) -> None:
+        self.counters[name] = self.counters.get(name, 0) + amount
+
+    def snapshot(self) -> dict[str, Any]:
+        from app.core.config import get_settings
+        from app.parsing.metrics import parser_metrics
+        try:
+            from app.orchestrator.manager import orchestrator
+            orchestrator_metrics = orchestrator.get_metrics()
+        except Exception:
+            orchestrator_metrics = {}
+
+        settings = get_settings()
+        res = {
+            "service": "literature",
+            "environment": settings.environment,
+            "parser_metrics": parser_metrics.snapshot(),
+            "orchestrator_metrics": orchestrator_metrics,
+        }
+        for k, v in self.counters.items():
+            res[k] = v
+        return res
+
+
+metrics = GeneralMetrics()

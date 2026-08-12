@@ -17,6 +17,16 @@ async def list_papers(
     page_size: int = Query(20, ge=1, le=100),
 ) -> dict[str, object]:
     offset = (page - 1) * page_size
+    if postgres_manager.pool is None:
+        from app.main import _PAPERS
+        items = list(_PAPERS.values())[offset : offset + page_size]
+        return {
+            "items": items,
+            "total": len(_PAPERS),
+            "page": page,
+            "pageSize": page_size,
+        }
+
     async with postgres_manager.acquire() as connection:
         rows = await connection.fetch(
             """
@@ -43,6 +53,28 @@ async def get_paper(
     paper_id: UUID,
     auth_payload: dict[str, str] = auth_dependency,
 ) -> Paper:
+    if postgres_manager.pool is None:
+        from app.main import _PAPERS
+        paper = _PAPERS.get(str(paper_id))
+        if paper is None:
+            raise HTTPException(status_code=404, detail="paper not found")
+        published_at_val = paper.get("publishedAt")
+        from datetime import datetime
+        published_at_dt = None
+        if isinstance(published_at_val, str):
+            try:
+                published_at_dt = datetime.fromisoformat(published_at_val)
+            except ValueError:
+                pass
+        return Paper(
+            id=paper["id"],
+            title=paper["title"],
+            source=paper["source"],
+            doi=paper.get("doi"),
+            published_at=published_at_dt,
+            citation_count=paper.get("citationCount") or 0,
+        )
+
     async with postgres_manager.acquire() as connection:
         row = await connection.fetchrow(
             """

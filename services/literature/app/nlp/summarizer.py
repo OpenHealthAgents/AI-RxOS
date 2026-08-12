@@ -1,14 +1,19 @@
 from __future__ import annotations
 
+import logging
 import re
 import time
 from typing import Any
+
+import httpx
 
 from app.observability.metrics import (
     SUMMARIZER_DURATION_SECONDS,
     SUMMARIZER_ERRORS_TOTAL,
     SUMMARIZER_TOTAL,
 )
+
+logger = logging.getLogger(__name__)
 
 SENTENCE_END_RE = re.compile(r"(?<=[.!?])\s+")
 SUMMARY_KEYWORDS = [
@@ -198,3 +203,71 @@ class SummarizerService:
             if any(keyword in sentence.lower() for keyword in LIMITATION_KEYWORDS):
                 return sentence
         return "No explicit limitations were identified."
+
+
+class DocumentSummarizer:
+    """LLM-based document summarization with extractive fallback."""
+
+    def __init__(self, config: dict[str, Any] | None = None):
+        self.config = config or {}
+        self.api_key = self.config.get("llm_api_key")
+        self.api_url = self.config.get("llm_api_url", "http://localhost:8000/v1/chat/completions")
+        self.max_retries = int(self.config.get("llm_max_retries", 2))
+        self.backoff_seconds = float(self.config.get("llm_backoff_seconds", 0.5))
+        self.timeout = float(self.config.get("llm_timeout", 5.0))
+        self.model = self.config.get("llm_model", "gpt-3.5-turbo")
+
+    def summarize(self, doc: dict[str, Any]) -> dict[str, Any]:
+        abstract = doc.get("abstract") or doc.get("content") or ""
+        title = doc.get("title") or ""
+
+        if self.api_key:
+            for attempt in range(self.max_retries + 1):
+                try:
+                    headers = {
+                        "Authorization": f"Bearer {self.api_key}",
+                        "Content-Type": "application/json",
+                    }
+                    payload = {
+                        "model": self.model,
+                        "messages": [
+                            {
+                                "role": "system",
+                                "content": "You are a helpful biomedical assistant. Summarize the following document concisely.",
+                            },
+                            {
+                                "role": "user",
+                                "content": f"Title: {title}\nAbstract: {abstract}",
+                            },
+                        ],
+                    }
+                    resp = httpx.post(self.api_url, json=payload, headers=headers, timeout=self.timeout)
+                    resp.raise_for_status()
+                    data = resp.json()
+                    summary_text = data["choices"][0]["message"]["content"]
+                    return {
+                        "summary_type": "llm_generated",
+                        "concise_summary": summary_text,
+                        "llm_used": True,
+                    }
+                except Exception as exc:
+                    if attempt >= self.max_retries:
+                        logger.warning("LLM summarization failed after retries: %s", exc)
+                        break
+                    time.sleep(self.backoff_seconds * (2**attempt))
+
+        # Extractive fallback
+        sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", abstract) if s.strip()]
+        concise = ""
+        if title:
+            concise += title + ". "
+        if sentences:
+            concise += " ".join(sentences[:2])
+        else:
+            concise += abstract[:300]
+
+        return {
+            "summary_type": "extractive_fallback",
+            "concise_summary": concise.strip(),
+            "llm_used": False,
+        }

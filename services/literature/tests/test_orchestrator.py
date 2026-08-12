@@ -1,14 +1,14 @@
 import asyncio
 import json
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Any
 from unittest.mock import AsyncMock, Mock
 
 import httpx
+import pytest
 from fastapi.testclient import TestClient
 from httpx import ASGITransport
-import pytest
 
 from app.core.security import get_current_user
 from app.main import app
@@ -167,11 +167,6 @@ async def test_scheduler_triggers_scheduled_job_to_completion(monkeypatch):
     monkeypatch.setattr("app.routers.ingestion.postgres_manager.acquire", fake_acquire)
     monkeypatch.setattr("app.orchestrator.manager.postgres_manager.acquire", fake_acquire)
     monkeypatch.setattr("app.routers.ingestion.orchestrator", scheduled_orchestrator)
-    def fake_compute_next_run(self, schedule, reference=None):
-        if reference is None:
-            return now
-        return now + timedelta(minutes=1)
-
     original_compute_next_run = IngestionOrchestrator._compute_next_run
 
     def fake_compute_next_run(self, schedule, reference=None):

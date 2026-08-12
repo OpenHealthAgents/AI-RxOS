@@ -2,7 +2,7 @@ import io
 
 import pytest
 
-from app.parsing import parse_document, parser_metrics, DuplicateDocumentError
+from app.parsing import DuplicateDocumentError, parse_document, parser_metrics
 
 
 def test_parse_xml_document_metadata():

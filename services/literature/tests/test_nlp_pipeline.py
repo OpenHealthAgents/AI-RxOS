@@ -1,16 +1,11 @@
 import pytest
 
+from app.nlp.embedding_service import EmbeddingService
+from app.nlp.entity_extractor import EntityExtractor
 from app.nlp.pipeline import BiomedicalNLPPipeline, process_document
 from app.nlp.sentence_segmenter import SentenceSegmenter
 from app.nlp.tokenizer import BiomedicalTokenizer
-from app.nlp.entity_extractor import EntityExtractor
-from app.nlp.entity_normalizer import EntityNormalizer
-from app.nlp.ontology_mapper import OntologyMapper
-from app.nlp.confidence_scorer import ConfidenceScorer
-from app.nlp.relationship_extractor import RelationshipExtractor
-from app.nlp.embedding_service import EmbeddingService
 from app.services.search_integration import SearchIntegrationService
-from app.services.kg_integration import KGIntegrationService
 
 
 def make_doc():

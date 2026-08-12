@@ -150,3 +150,67 @@ class BiomedicalNLPPipeline:
 def process_document(document: dict[str, Any]) -> dict[str, Any]:
     pipeline = BiomedicalNLPPipeline()
     return pipeline.process_document(document)
+
+
+class LiteratureNLP:
+    """Coordinating NLP wrapper for text parsing, NER, summarization, relationships, ranking, and deduplication."""
+
+    def __init__(self, config: dict[str, Any] | None = None):
+        self.config = config or {}
+        from app.parsing.text_parser import TextParser
+        from app.nlp.deduplication import DuplicateDetector
+        from app.nlp.summarizer import DocumentSummarizer
+        from app.nlp.relationships import RelationshipExtractor
+        from app.nlp.evidence_ranking import EvidenceRanker
+
+        self.parser = TextParser()
+        self.duplicate_detector = DuplicateDetector()
+        self.summarizer = DocumentSummarizer(self.config)
+        self.relationship_extractor = RelationshipExtractor()
+        self.evidence_ranker = EvidenceRanker()
+
+        ner_provider = self.config.get("ner_provider", "rule_based")
+        if ner_provider == "spacy":
+            from app.nlp.ner import SpaCyEntityExtractor
+            spacy_ner = SpaCyEntityExtractor()
+            if spacy_ner.available:
+                self.ner: Any = spacy_ner
+            else:
+                from app.nlp.ner import RuleBasedEntityExtractor
+                self.ner = RuleBasedEntityExtractor()
+        else:
+            from app.nlp.ner import RuleBasedEntityExtractor
+            self.ner = RuleBasedEntityExtractor()
+
+    def parse_document(self, doc: dict[str, Any]) -> dict[str, Any]:
+        return self.parser.normalize_document(doc)
+
+    def detect_duplicate(self, doc_a: dict[str, Any], doc_b: dict[str, Any]) -> dict[str, Any]:
+        return self.duplicate_detector.detect_duplicate(doc_a, doc_b)
+
+    def extract_relationships(self, doc: dict[str, Any]) -> list[dict[str, Any]]:
+        return self.relationship_extractor.extract(doc, doc.get("entities"))
+
+    def run(self, text: str) -> dict[str, Any]:
+        doc = {
+            "title": "Biomedical Text Analysis",
+            "abstract": text,
+            "content": text,
+            "source": "nlp_run",
+            "source_id": "nlp_run_1",
+        }
+        parsed_doc = self.parse_document(doc)
+        entities = self.ner.extract_entities(text)
+        parsed_doc["entities"] = entities
+
+        relationships = self.extract_relationships(parsed_doc)
+        summary = self.summarizer.summarize(parsed_doc)
+        evidence = self.evidence_ranker.rank_document(parsed_doc)
+
+        return {
+            "entities": [e["text"] for e in entities],
+            "summary": summary.get("concise_summary", ""),
+            "evidence": [evidence],
+            "relationships": relationships,
+            "parsed": parsed_doc,
+        }

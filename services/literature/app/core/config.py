@@ -51,6 +51,23 @@ class Settings(BaseSettings):
 
     cors_origins: list[str] = ["*"]
 
+    # Base URLs for connectors
+    pubmed_base_url: str = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
+    pmc_base_url: str = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
+    clinicaltrials_base_url: str = "https://clinicaltrials.gov/api/v2/studies"
+    biorxiv_base_url: str = "https://api.biorxiv.org/details/biorxiv"
+    medrxiv_base_url: str = "https://api.biorxiv.org/details/medrxiv"
+
+    # Services URLs and parameters
+    search_service_url: str = "http://search:8000"
+    kg_service_timeout_seconds: float = 5.0
+    kg_service_max_retries: int = 3
+    llmwiki_service_url: str = "http://wiki:8000"
+    llmwiki_service_timeout_seconds: float = 5.0
+    llmwiki_service_max_retries: int = 3
+    search_service_timeout_seconds: float = 5.0
+    search_service_max_retries: int = 3
+
 
 @lru_cache
 def get_settings() -> Settings:

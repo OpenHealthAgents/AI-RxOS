@@ -1,16 +1,31 @@
-import uuid
-from typing import Literal
+from __future__ import annotations
 
-from fastapi import FastAPI, Request, Response
+import time
+import uuid
+
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
 
 from app.core.config import get_settings
-from app.database.models import IngestionJobState, job_store
-from app.observability.metrics import metrics
+from app.core.lifespan import lifespan
+from app.observability.metrics import (
+    REQUEST_COUNT,
+    REQUEST_ERRORS,
+    REQUEST_IN_FLIGHT,
+    REQUEST_LATENCY_SECONDS,
+)
+from app.routers.documents import router as documents_router
+from app.routers.health import router as health_router
+from app.routers.ingestion import router as ingestion_router
+from app.routers.nlp import router as nlp_router
+from app.routers.papers import router as papers_router
 from app.services.literature_service import LiteratureService
+from app.utils.logging import get_logger, set_request_context
 
 settings = get_settings()
+logger = get_logger(__name__)
+
+# Literature Service instance to support fallback in-memory ingestion route
 literature_service = LiteratureService(
     {
         "kg_service_url": settings.kg_service_url,
@@ -42,132 +57,72 @@ literature_service = LiteratureService(
     }
 )
 
+# In-memory papers cache to support fallback in-memory papers router
+_PAPERS: dict[str, dict] = {}
+
 app = FastAPI(
     title="AI-RxOS Literature Service",
-    description="Ingestion, extraction, knowledge graph, and citation services for the Literature Intelligence bounded context.",
+    description="Ingestion, extraction, and citation services for the Literature Intelligence bounded context.",
     version="0.2.0",
+    lifespan=lifespan,
 )
+
+cors_origins = getattr(settings, "cors_origins", ["*"])
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins,
+    allow_origins=cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
 
 @app.middleware("http")
-async def trace_id_middleware(request: Request, call_next):
-    trace_id = request.headers.get("X-Trace-ID") or str(uuid.uuid4())
-    response: Response = await call_next(request)
-    response.headers["X-Trace-ID"] = trace_id
-    return response
-
-
-_PAPERS: dict[str, dict] = {}
-
-
-class Paper(BaseModel):
-    id: str
-    title: str
-    source: Literal[
-        "pubmed",
-        "pmc",
-        "clinicaltrials",
-        "aacr",
-        "asco",
-        "sabcs",
-        "esmo",
-        "biorxiv",
-        "medrxiv",
-        "patents",
-        "company_websites",
-    ]
-    doi: str | None = None
-    publishedAt: str | None = None
-    citationCount: int = 0
-
-
-class IngestionRequest(BaseModel):
-    source: Literal[
-        "pubmed",
-        "pmc",
-        "clinicaltrials",
-        "aacr",
-        "asco",
-        "sabcs",
-        "esmo",
-        "biorxiv",
-        "medrxiv",
-        "patents",
-        "company_websites",
-    ]
-    query: str
-
-
-class IngestionJobResponse(BaseModel):
-    id: str
-    source: str
-    query: str
-    status: str
-    createdAt: str
-
-
-@app.get("/healthz")
-def health() -> dict[str, str]:
-    return {"status": "ok", "service": "literature"}
-
-
-@app.get("/metrics")
-def get_metrics() -> dict[str, int]:
-    return metrics.snapshot()
-
-
-@app.get("/api/v1/papers")
-def list_papers(page: int = 1, page_size: int = 20) -> dict:
-    items = list(_PAPERS.values())[(page - 1) * page_size : page * page_size]
-    return {"items": items, "total": len(_PAPERS), "page": page, "pageSize": page_size}
-
-
-@app.get("/api/v1/papers/{paper_id}")
-def get_paper(paper_id: str) -> Paper | dict:
-    paper = _PAPERS.get(paper_id)
-    return paper or {"error": "not_found"}
-
-
-@app.post("/api/v1/ingestion", response_model=IngestionJobResponse, status_code=202)
-def start_ingestion(req: IngestionRequest) -> IngestionJobResponse:
-    job_id = str(uuid.uuid4())
-    job = IngestionJobState(
-        id=job_id,
-        source=req.source,
-        query=req.query,
-        status="pending",
+async def add_request_context(request: Request, call_next):
+    # Support both case-sensitive request ID/trace ID variations
+    request_id = (
+        request.headers.get("x-request-id")
+        or request.headers.get("X-Request-ID")
+        or request.headers.get("X-Trace-ID")
+        or request.headers.get("x-trace-id")
+        or str(uuid.uuid4())
     )
-    job_store.save(job)
+    trace_id = request_id
+    request.state.request_id = request_id
+    request.state.trace_id = trace_id
+    set_request_context(request_id=request_id, trace_id=trace_id)
 
-    literature_service.ingest(req.source, req.query, job_id=job_id)
+    method = request.method
+    endpoint = request.url.path
+    REQUEST_IN_FLIGHT.labels(method=method, endpoint=endpoint).inc()
+    start_time = time.perf_counter()
+    try:
+        response = await call_next(request)
+        status_code = str(response.status_code)
+        REQUEST_COUNT.labels(method=method, endpoint=endpoint, status=status_code).inc()
+        if response.status_code >= 400:
+            REQUEST_ERRORS.labels(
+                method=method, endpoint=endpoint, status=status_code
+            ).inc()
+        response.headers["x-request-id"] = request_id
+        response.headers["x-trace-id"] = trace_id
+        response.headers["X-Trace-ID"] = trace_id
+        return response
+    except Exception:
+        REQUEST_COUNT.labels(method=method, endpoint=endpoint, status="500").inc()
+        REQUEST_ERRORS.labels(method=method, endpoint=endpoint, status="500").inc()
+        raise
+    finally:
+        elapsed = time.perf_counter() - start_time
+        REQUEST_LATENCY_SECONDS.labels(method=method, endpoint=endpoint).observe(
+            elapsed
+        )
+        REQUEST_IN_FLIGHT.labels(method=method, endpoint=endpoint).dec()
 
-    updated_job = job_store.get(job_id) or job
-    status_output = "completed" if updated_job.status == "completed" else updated_job.status
-    return IngestionJobResponse(
-        id=updated_job.id,
-        source=updated_job.source,
-        query=updated_job.query,
-        status=status_output,
-        createdAt=updated_job.created_at,
-    )
 
-
-@app.get("/api/v1/ingestion/{job_id}")
-def get_ingestion_job(job_id: str) -> dict:
-    job = job_store.get(job_id)
-    if not job:
-        return {"error": "not_found"}
-    return job.model_dump()
-
-
-@app.post("/api/v1/analyze")
-def analyze_text(text: str) -> dict:
-    return literature_service.analyze_text(text)
+app.include_router(health_router)
+app.include_router(papers_router, prefix="/api/v1")
+app.include_router(ingestion_router, prefix="/api/v1")
+app.include_router(documents_router, prefix="/api/v1")
+app.include_router(nlp_router, prefix="/api/v1")
