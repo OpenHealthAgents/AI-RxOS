@@ -15,25 +15,43 @@ class Settings(BaseSettings):
     neo4j_user: str = "neo4j"
     neo4j_password: str = "changeme_neo4j"
     opensearch_url: str = "http://opensearch:9200"
-    search_service_url: str = "http://search:8084"
-    search_service_timeout_seconds: int = 5
-    search_service_max_retries: int = 3
-    kg_service_url: str = "http://kg:8083"
-    kg_service_timeout_seconds: int = 5
-    kg_service_max_retries: int = 3
-    llmwiki_service_url: str = "http://llmwiki:8086"
-    llmwiki_service_timeout_seconds: int = 5
-    llmwiki_service_max_retries: int = 3
-    jwt_secret: str = "changeme_secret"
-    cors_allowed_origins: list[str] = ["http://localhost:3000"]
+    jwt_secret: str = "change_this_dev_secret_before_deploying"
 
-    pubmed_base_url: str = "https://api.ncbi.nlm.nih.gov/lit/ctxp/v1/pubmed/"
-    pmc_base_url: str = "https://api.ncbi.nlm.nih.gov/lit/ctxp/v1/pmc/"
-    clinicaltrials_base_url: str = "https://clinicaltrials.gov/api/query"
-    biorxiv_base_url: str = "https://api.biorxiv.org"
-    medrxiv_base_url: str = "https://api.biorxiv.org"
+    kg_service_url: str = "http://kg:8000"
+    okf_wiki_url: str | None = None
+    okf_wiki_dir: str = "wiki-root"
+
+    llm_provider: str | None = None
+    llm_api_key: str | None = None
+    llm_api_url: str | None = None
+    llm_model: str = "gpt-3.5-turbo"
+    llm_timeout: float = 10.0
+    llm_max_retries: int = 1
+    llm_backoff_seconds: float = 0.25
+
+    ner_provider: str = "rule_based"
+    ner_model: str = "en_core_web_sm"
+    ner_timeout: float = 10.0
+
+    kg_timeout: float = 5.0
+    kg_max_retries: int = 1
+    kg_backoff_seconds: float = 0.25
+
+    wiki_api_key: str | None = None
+    wiki_timeout: float = 5.0
+    wiki_max_retries: int = 1
+    wiki_backoff_seconds: float = 0.25
+
+    crawler_user_agent: str = "AI-RxOS LiteratureBot/1.0"
+    crawler_timeout: float = 10.0
+    crawler_rate_limit: float = 0.5
+    crawler_max_pages: int = 10
+    crawler_max_depth: int = 2
+    crawler_allowed_domains: list[str] = []
+
+    cors_origins: list[str] = ["*"]
 
 
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()  # type: ignore[call-arg]
+    return Settings()

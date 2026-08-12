@@ -1,0 +1,644 @@
+[
+  {
+    "id": "job-test-1",
+    "source": "pubmed",
+    "query": "oncology",
+    "status": "dead_letter",
+    "created_at": "2026-08-09T18:18:41.860017+00:00",
+    "updated_at": "2026-08-09T18:18:41.881321+00:00",
+    "attempts": 2,
+    "max_retries": 3,
+    "error": "Stage failure simulation",
+    "result": null
+  },
+  {
+    "id": "88fd4d71-ad14-45a3-96a1-f5d23c64c5d3",
+    "source": "pubmed",
+    "query": "trastuzumab HER2",
+    "status": "completed",
+    "created_at": "2026-08-09T15:36:34.655036+00:00",
+    "updated_at": "2026-08-09T15:36:35.776023+00:00",
+    "attempts": 3,
+    "max_retries": 3,
+    "error": null,
+    "result": {
+      "source": "pubmed",
+      "query": "trastuzumab HER2",
+      "items": [],
+      "limitation": null,
+      "source_status": {
+        "source": "pubmed",
+        "connected": true,
+        "timeout": 10.0,
+        "user_agent": "AI-RxOS LiteratureBot/1.0",
+        "max_retries": 2,
+        "limitation": null
+      },
+      "processed_items": [],
+      "duplicates": [],
+      "status": "completed",
+      "kg_updates": [],
+      "wiki_updates": []
+    }
+  },
+  {
+    "id": "2867cc60-a9a2-4319-8ba2-cf069df3a4eb",
+    "source": "pubmed",
+    "query": "trastuzumab HER2",
+    "status": "completed",
+    "created_at": "2026-08-09T15:39:00.534692+00:00",
+    "updated_at": "2026-08-09T15:39:01.601027+00:00",
+    "attempts": 3,
+    "max_retries": 3,
+    "error": null,
+    "result": {
+      "source": "pubmed",
+      "query": "trastuzumab HER2",
+      "items": [],
+      "limitation": null,
+      "source_status": {
+        "source": "pubmed",
+        "connected": true,
+        "timeout": 10.0,
+        "user_agent": "AI-RxOS LiteratureBot/1.0",
+        "max_retries": 2,
+        "limitation": null
+      },
+      "processed_items": [],
+      "duplicates": [],
+      "status": "completed",
+      "kg_updates": [],
+      "wiki_updates": []
+    }
+  },
+  {
+    "id": "d885a5ce-6eae-4a54-81d7-88cd94ac2732",
+    "source": "pubmed",
+    "query": "trastuzumab HER2",
+    "status": "completed",
+    "created_at": "2026-08-09T15:55:11.178201+00:00",
+    "updated_at": "2026-08-09T15:55:12.135817+00:00",
+    "attempts": 3,
+    "max_retries": 3,
+    "error": null,
+    "result": {
+      "source": "pubmed",
+      "query": "trastuzumab HER2",
+      "items": [],
+      "limitation": null,
+      "source_status": {
+        "source": "pubmed",
+        "connected": true,
+        "timeout": 10.0,
+        "user_agent": "AI-RxOS LiteratureBot/1.0",
+        "max_retries": 2,
+        "limitation": null
+      },
+      "processed_items": [],
+      "duplicates": [],
+      "status": "completed",
+      "kg_updates": [],
+      "wiki_updates": []
+    }
+  },
+  {
+    "id": "7be4b43d-b905-4c4a-a3c1-b033ce81ccb9",
+    "source": "pubmed",
+    "query": "trastuzumab HER2",
+    "status": "completed",
+    "created_at": "2026-08-09T16:36:16.840544+00:00",
+    "updated_at": "2026-08-09T16:36:17.913566+00:00",
+    "attempts": 3,
+    "max_retries": 3,
+    "error": null,
+    "result": {
+      "source": "pubmed",
+      "query": "trastuzumab HER2",
+      "items": [],
+      "limitation": null,
+      "source_status": {
+        "source": "pubmed",
+        "connected": true,
+        "timeout": 10.0,
+        "user_agent": "AI-RxOS LiteratureBot/1.0",
+        "max_retries": 2,
+        "limitation": null
+      },
+      "processed_items": [],
+      "duplicates": [],
+      "status": "completed",
+      "kg_updates": [],
+      "wiki_updates": []
+    }
+  },
+  {
+    "id": "0e279eb7-9a08-4530-a76e-ccb234a64030",
+    "source": "pubmed",
+    "query": "trastuzumab HER2",
+    "status": "completed",
+    "created_at": "2026-08-09T16:44:58.981446+00:00",
+    "updated_at": "2026-08-09T16:44:59.594785+00:00",
+    "attempts": 3,
+    "max_retries": 3,
+    "error": null,
+    "result": {
+      "source": "pubmed",
+      "query": "trastuzumab HER2",
+      "items": [],
+      "limitation": null,
+      "source_status": {
+        "source": "pubmed",
+        "connected": true,
+        "timeout": 10.0,
+        "user_agent": "AI-RxOS LiteratureBot/1.0",
+        "max_retries": 2,
+        "limitation": null
+      },
+      "processed_items": [],
+      "duplicates": [],
+      "status": "completed",
+      "kg_updates": [],
+      "wiki_updates": []
+    }
+  },
+  {
+    "id": "b2716595-ad05-400b-8719-dbe729544c84",
+    "source": "pubmed",
+    "query": "trastuzumab HER2",
+    "status": "completed",
+    "created_at": "2026-08-09T16:45:52.686726+00:00",
+    "updated_at": "2026-08-09T16:45:53.594496+00:00",
+    "attempts": 3,
+    "max_retries": 3,
+    "error": null,
+    "result": {
+      "source": "pubmed",
+      "query": "trastuzumab HER2",
+      "items": [],
+      "limitation": null,
+      "source_status": {
+        "source": "pubmed",
+        "connected": true,
+        "timeout": 10.0,
+        "user_agent": "AI-RxOS LiteratureBot/1.0",
+        "max_retries": 2,
+        "limitation": null
+      },
+      "processed_items": [],
+      "duplicates": [],
+      "status": "completed",
+      "kg_updates": [],
+      "wiki_updates": []
+    }
+  },
+  {
+    "id": "b04952c9-c8d2-49ab-a296-ed1bae76cdf4",
+    "source": "pubmed",
+    "query": "trastuzumab HER2",
+    "status": "completed",
+    "created_at": "2026-08-09T16:51:21.094238+00:00",
+    "updated_at": "2026-08-09T16:51:21.859473+00:00",
+    "attempts": 3,
+    "max_retries": 3,
+    "error": null,
+    "result": {
+      "source": "pubmed",
+      "query": "trastuzumab HER2",
+      "items": [],
+      "limitation": null,
+      "source_status": {
+        "source": "pubmed",
+        "connected": true,
+        "timeout": 10.0,
+        "user_agent": "AI-RxOS LiteratureBot/1.0",
+        "max_retries": 2,
+        "limitation": null
+      },
+      "processed_items": [],
+      "duplicates": [],
+      "status": "completed",
+      "kg_updates": [],
+      "wiki_updates": []
+    }
+  },
+  {
+    "id": "1eb90b9c-f53b-4179-a093-66ce0d28e367",
+    "source": "pubmed",
+    "query": "trastuzumab HER2",
+    "status": "completed",
+    "created_at": "2026-08-09T16:51:52.359921+00:00",
+    "updated_at": "2026-08-09T16:51:52.887987+00:00",
+    "attempts": 3,
+    "max_retries": 3,
+    "error": null,
+    "result": {
+      "source": "pubmed",
+      "query": "trastuzumab HER2",
+      "items": [],
+      "limitation": null,
+      "source_status": {
+        "source": "pubmed",
+        "connected": true,
+        "timeout": 10.0,
+        "user_agent": "AI-RxOS LiteratureBot/1.0",
+        "max_retries": 2,
+        "limitation": null
+      },
+      "processed_items": [],
+      "duplicates": [],
+      "status": "completed",
+      "kg_updates": [],
+      "wiki_updates": []
+    }
+  },
+  {
+    "id": "b472b5b9-5002-4b35-bd5a-59ac84026114",
+    "source": "pubmed",
+    "query": "trastuzumab HER2",
+    "status": "completed",
+    "created_at": "2026-08-09T17:01:50.096537+00:00",
+    "updated_at": "2026-08-09T17:01:50.457348+00:00",
+    "attempts": 3,
+    "max_retries": 3,
+    "error": null,
+    "result": {
+      "source": "pubmed",
+      "query": "trastuzumab HER2",
+      "items": [],
+      "limitation": null,
+      "source_status": {
+        "source": "pubmed",
+        "connected": true,
+        "timeout": 10.0,
+        "user_agent": "AI-RxOS LiteratureBot/1.0",
+        "max_retries": 2,
+        "limitation": null
+      },
+      "processed_items": [],
+      "duplicates": [],
+      "status": "completed",
+      "kg_updates": [],
+      "wiki_updates": []
+    }
+  },
+  {
+    "id": "3e928a11-33a8-4e85-bd1c-b6251f544236",
+    "source": "pubmed",
+    "query": "trastuzumab HER2",
+    "status": "completed",
+    "created_at": "2026-08-09T17:09:25.730838+00:00",
+    "updated_at": "2026-08-09T17:09:26.098394+00:00",
+    "attempts": 3,
+    "max_retries": 3,
+    "error": null,
+    "result": {
+      "source": "pubmed",
+      "query": "trastuzumab HER2",
+      "items": [],
+      "limitation": null,
+      "source_status": {
+        "source": "pubmed",
+        "connected": true,
+        "timeout": 10.0,
+        "user_agent": "AI-RxOS LiteratureBot/1.0",
+        "max_retries": 2,
+        "limitation": null
+      },
+      "processed_items": [],
+      "duplicates": [],
+      "status": "completed",
+      "kg_updates": [],
+      "wiki_updates": []
+    }
+  },
+  {
+    "id": "5584ec5b-1036-4a27-92bb-42949d019531",
+    "source": "pubmed",
+    "query": "trastuzumab HER2",
+    "status": "completed",
+    "created_at": "2026-08-09T17:12:38.917534+00:00",
+    "updated_at": "2026-08-09T17:12:39.495457+00:00",
+    "attempts": 3,
+    "max_retries": 3,
+    "error": null,
+    "result": {
+      "source": "pubmed",
+      "query": "trastuzumab HER2",
+      "items": [],
+      "limitation": null,
+      "source_status": {
+        "source": "pubmed",
+        "connected": true,
+        "timeout": 10.0,
+        "user_agent": "AI-RxOS LiteratureBot/1.0",
+        "max_retries": 2,
+        "limitation": null
+      },
+      "processed_items": [],
+      "duplicates": [],
+      "status": "completed",
+      "kg_updates": [],
+      "wiki_updates": []
+    }
+  },
+  {
+    "id": "37ce44c3-cf73-4bae-8696-13c97dcbf6e1",
+    "source": "pubmed",
+    "query": "trastuzumab HER2",
+    "status": "completed",
+    "created_at": "2026-08-09T17:14:27.258929+00:00",
+    "updated_at": "2026-08-09T17:14:27.736948+00:00",
+    "attempts": 3,
+    "max_retries": 3,
+    "error": null,
+    "result": {
+      "source": "pubmed",
+      "query": "trastuzumab HER2",
+      "items": [],
+      "limitation": null,
+      "source_status": {
+        "source": "pubmed",
+        "connected": true,
+        "timeout": 10.0,
+        "user_agent": "AI-RxOS LiteratureBot/1.0",
+        "max_retries": 2,
+        "limitation": null
+      },
+      "processed_items": [],
+      "duplicates": [],
+      "status": "completed",
+      "kg_updates": [],
+      "wiki_updates": []
+    }
+  },
+  {
+    "id": "c0c3581b-e472-4c24-9da5-52b020ca848a",
+    "source": "pubmed",
+    "query": "trastuzumab HER2",
+    "status": "completed",
+    "created_at": "2026-08-09T17:22:39.974790+00:00",
+    "updated_at": "2026-08-09T17:22:40.343901+00:00",
+    "attempts": 3,
+    "max_retries": 3,
+    "error": null,
+    "result": {
+      "source": "pubmed",
+      "query": "trastuzumab HER2",
+      "items": [],
+      "limitation": null,
+      "source_status": {
+        "source": "pubmed",
+        "connected": true,
+        "timeout": 10.0,
+        "user_agent": "AI-RxOS LiteratureBot/1.0",
+        "max_retries": 2,
+        "limitation": null
+      },
+      "processed_items": [],
+      "duplicates": [],
+      "status": "completed",
+      "kg_updates": [],
+      "wiki_updates": []
+    }
+  },
+  {
+    "id": "9d9e46c6-a49b-42f5-9b9e-bd82ec7b3123",
+    "source": "pubmed",
+    "query": "trastuzumab HER2",
+    "status": "completed",
+    "created_at": "2026-08-09T17:30:38.787581+00:00",
+    "updated_at": "2026-08-09T17:30:39.147444+00:00",
+    "attempts": 3,
+    "max_retries": 3,
+    "error": null,
+    "result": {
+      "source": "pubmed",
+      "query": "trastuzumab HER2",
+      "items": [],
+      "limitation": null,
+      "source_status": {
+        "source": "pubmed",
+        "connected": true,
+        "timeout": 10.0,
+        "user_agent": "AI-RxOS LiteratureBot/1.0",
+        "max_retries": 2,
+        "limitation": null
+      },
+      "processed_items": [],
+      "duplicates": [],
+      "status": "completed",
+      "kg_updates": [],
+      "wiki_updates": []
+    }
+  },
+  {
+    "id": "c2502caf-9c8a-41ed-8995-63574a9f1294",
+    "source": "pubmed",
+    "query": "trastuzumab HER2",
+    "status": "completed",
+    "created_at": "2026-08-09T17:37:05.924430+00:00",
+    "updated_at": "2026-08-09T17:37:06.835643+00:00",
+    "attempts": 3,
+    "max_retries": 3,
+    "error": null,
+    "result": {
+      "source": "pubmed",
+      "query": "trastuzumab HER2",
+      "items": [],
+      "limitation": null,
+      "source_status": {
+        "source": "pubmed",
+        "connected": true,
+        "timeout": 10.0,
+        "user_agent": "AI-RxOS LiteratureBot/1.0",
+        "max_retries": 2,
+        "limitation": null
+      },
+      "processed_items": [],
+      "duplicates": [],
+      "status": "completed",
+      "kg_updates": [],
+      "wiki_updates": []
+    }
+  },
+  {
+    "id": "f5b70b64-d139-48b6-b41d-de2c8e71e11c",
+    "source": "pubmed",
+    "query": "trastuzumab HER2",
+    "status": "completed",
+    "created_at": "2026-08-09T17:41:58.607354+00:00",
+    "updated_at": "2026-08-09T17:41:59.036607+00:00",
+    "attempts": 3,
+    "max_retries": 3,
+    "error": null,
+    "result": {
+      "source": "pubmed",
+      "query": "trastuzumab HER2",
+      "items": [],
+      "limitation": null,
+      "source_status": {
+        "source": "pubmed",
+        "connected": true,
+        "timeout": 10.0,
+        "user_agent": "AI-RxOS LiteratureBot/1.0",
+        "max_retries": 2,
+        "limitation": null
+      },
+      "processed_items": [],
+      "duplicates": [],
+      "status": "completed",
+      "kg_updates": [],
+      "wiki_updates": []
+    }
+  },
+  {
+    "id": "7a946b83-90fb-43b6-92ab-0ad65fdaf991",
+    "source": "pubmed",
+    "query": "trastuzumab HER2",
+    "status": "completed",
+    "created_at": "2026-08-09T17:59:23.039521+00:00",
+    "updated_at": "2026-08-09T17:59:23.470983+00:00",
+    "attempts": 3,
+    "max_retries": 3,
+    "error": null,
+    "result": {
+      "source": "pubmed",
+      "query": "trastuzumab HER2",
+      "items": [],
+      "limitation": null,
+      "source_status": {
+        "source": "pubmed",
+        "connected": true,
+        "timeout": 10.0,
+        "user_agent": "AI-RxOS LiteratureBot/1.0",
+        "max_retries": 2,
+        "limitation": null
+      },
+      "processed_items": [],
+      "duplicates": [],
+      "status": "completed",
+      "kg_updates": [],
+      "wiki_updates": []
+    }
+  },
+  {
+    "id": "f93e622d-1c8f-40dc-b13d-b86c48118a50",
+    "source": "pubmed",
+    "query": "trastuzumab HER2",
+    "status": "completed",
+    "created_at": "2026-08-09T18:14:32.553191+00:00",
+    "updated_at": "2026-08-09T18:14:33.090576+00:00",
+    "attempts": 8,
+    "max_retries": 3,
+    "error": null,
+    "result": {
+      "source": "pubmed",
+      "query": "trastuzumab HER2",
+      "items": [],
+      "limitation": null,
+      "source_status": {
+        "source": "pubmed",
+        "connected": true,
+        "timeout": 10.0,
+        "user_agent": "AI-RxOS LiteratureBot/1.0",
+        "max_retries": 2,
+        "limitation": null
+      },
+      "processed_items": [],
+      "duplicates": [],
+      "kg_updates": [],
+      "wiki_updates": [],
+      "status": "completed"
+    }
+  },
+  {
+    "id": "70397351-08a3-4124-8949-7ad691fdb0b2",
+    "source": "pubmed",
+    "query": "trastuzumab HER2",
+    "status": "completed",
+    "created_at": "2026-08-09T18:16:48.991167+00:00",
+    "updated_at": "2026-08-09T18:16:49.478011+00:00",
+    "attempts": 8,
+    "max_retries": 3,
+    "error": null,
+    "result": {
+      "source": "pubmed",
+      "query": "trastuzumab HER2",
+      "items": [],
+      "limitation": null,
+      "source_status": {
+        "source": "pubmed",
+        "connected": true,
+        "timeout": 10.0,
+        "user_agent": "AI-RxOS LiteratureBot/1.0",
+        "max_retries": 2,
+        "limitation": null
+      },
+      "processed_items": [],
+      "duplicates": [],
+      "kg_updates": [],
+      "wiki_updates": [],
+      "status": "completed"
+    }
+  },
+  {
+    "id": "118426b3-eb35-4331-b105-f4eff540ba4e",
+    "source": "pubmed",
+    "query": "trastuzumab HER2",
+    "status": "completed",
+    "created_at": "2026-08-09T18:17:26.917287+00:00",
+    "updated_at": "2026-08-09T18:17:27.430458+00:00",
+    "attempts": 8,
+    "max_retries": 3,
+    "error": null,
+    "result": {
+      "source": "pubmed",
+      "query": "trastuzumab HER2",
+      "items": [],
+      "limitation": null,
+      "source_status": {
+        "source": "pubmed",
+        "connected": true,
+        "timeout": 10.0,
+        "user_agent": "AI-RxOS LiteratureBot/1.0",
+        "max_retries": 2,
+        "limitation": null
+      },
+      "processed_items": [],
+      "duplicates": [],
+      "kg_updates": [],
+      "wiki_updates": [],
+      "status": "completed"
+    }
+  },
+  {
+    "id": "6c6feea4-b06b-4c09-9c41-3fa6b736bfb8",
+    "source": "pubmed",
+    "query": "trastuzumab HER2",
+    "status": "completed",
+    "created_at": "2026-08-09T18:18:41.891042+00:00",
+    "updated_at": "2026-08-09T18:18:42.287977+00:00",
+    "attempts": 8,
+    "max_retries": 3,
+    "error": null,
+    "result": {
+      "source": "pubmed",
+      "query": "trastuzumab HER2",
+      "items": [],
+      "limitation": null,
+      "source_status": {
+        "source": "pubmed",
+        "connected": true,
+        "timeout": 10.0,
+        "user_agent": "AI-RxOS LiteratureBot/1.0",
+        "max_retries": 2,
+        "limitation": null
+      },
+      "processed_items": [],
+      "duplicates": [],
+      "kg_updates": [],
+      "wiki_updates": [],
+      "status": "completed"
+    }
+  }
+]
