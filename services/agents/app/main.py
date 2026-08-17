@@ -7,6 +7,9 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
 from app.core.config import get_settings
+from app.memory.store import AgentMemoryStore, ConversationMemoryStore
+from app.routers import conversations as conversations_router
+from app.routers import memory as memory_router
 
 settings = get_settings()
 app = FastAPI(
@@ -18,6 +21,12 @@ app = FastAPI(
 
 _redis = redis.from_url(settings.redis_url, decode_responses=True)
 TASK_KEY = "agents:task:{id}"
+
+agent_memory_store = AgentMemoryStore(_redis)
+conversation_memory_store = ConversationMemoryStore(_redis)
+
+app.include_router(memory_router.router)
+app.include_router(conversations_router.router)
 
 
 class ToolInvocation(BaseModel):

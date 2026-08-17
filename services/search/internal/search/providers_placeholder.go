@@ -36,13 +36,21 @@ func NewLLMWikiProvider(cfg ProviderConfig) (*LLMWikiProvider, error) {
 }
 
 func (p *LLMWikiProvider) Upsert(ctx context.Context, id, title, content string, embedding []float32) error {
-	p.engine.IndexDocument(id, title, content, ProviderLLMWiki, embedding, 0)
+	return p.UpsertForTenant(ctx, id, title, content, embedding, TenantScope{})
+}
+
+func (p *LLMWikiProvider) UpsertForTenant(ctx context.Context, id, title, content string, embedding []float32, tenant TenantScope) error {
+	p.engine.IndexDocumentForTenant(id, title, content, ProviderLLMWiki, embedding, 0, tenant)
 	return nil
 }
 
 func (p *LLMWikiProvider) SimilaritySearch(ctx context.Context, embedding []float32, limit int) ([]Hit, error) {
+	return p.SimilaritySearchForTenant(ctx, embedding, limit, TenantScope{})
+}
+
+func (p *LLMWikiProvider) SimilaritySearchForTenant(ctx context.Context, embedding []float32, limit int, tenant TenantScope) ([]Hit, error) {
 	// Query local QMD index first
-	localHits, _ := p.engine.SearchVector(ctx, embedding, limit)
+	localHits, _ := p.engine.SearchVectorForTenant(ctx, embedding, limit, tenant)
 	for i := range localHits {
 		localHits[i].Source = ProviderLLMWiki
 	}
@@ -50,10 +58,14 @@ func (p *LLMWikiProvider) SimilaritySearch(ctx context.Context, embedding []floa
 		return localHits, nil
 	}
 
-	// Fall back to remote HTTP call if local index is empty
+	// Fall back to remote HTTP call if local index is empty. The remote
+	// LLM Wiki service is expected to enforce its own tenant isolation on
+	// org_id/workspace_id server-side — this client only forwards the scope.
 	payload := map[string]any{
-		"embedding": embedding,
-		"limit":     limit,
+		"embedding":        embedding,
+		"limit":            limit,
+		"organization_id":  tenant.OrgID,
+		"workspace_id":     tenant.WorkspaceID,
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
@@ -116,12 +128,20 @@ func NewGoogleOKFProvider(cfg ProviderConfig) (*GoogleOKFProvider, error) {
 }
 
 func (p *GoogleOKFProvider) Upsert(ctx context.Context, id, title, content string, embedding []float32) error {
-	p.engine.IndexDocument(id, title, content, ProviderGoogleOKF, embedding, 0)
+	return p.UpsertForTenant(ctx, id, title, content, embedding, TenantScope{})
+}
+
+func (p *GoogleOKFProvider) UpsertForTenant(ctx context.Context, id, title, content string, embedding []float32, tenant TenantScope) error {
+	p.engine.IndexDocumentForTenant(id, title, content, ProviderGoogleOKF, embedding, 0, tenant)
 	return nil
 }
 
 func (p *GoogleOKFProvider) SimilaritySearch(ctx context.Context, embedding []float32, limit int) ([]Hit, error) {
-	localHits, _ := p.engine.SearchVector(ctx, embedding, limit)
+	return p.SimilaritySearchForTenant(ctx, embedding, limit, TenantScope{})
+}
+
+func (p *GoogleOKFProvider) SimilaritySearchForTenant(ctx context.Context, embedding []float32, limit int, tenant TenantScope) ([]Hit, error) {
+	localHits, _ := p.engine.SearchVectorForTenant(ctx, embedding, limit, tenant)
 	for i := range localHits {
 		localHits[i].Source = ProviderGoogleOKF
 	}
@@ -129,7 +149,12 @@ func (p *GoogleOKFProvider) SimilaritySearch(ctx context.Context, embedding []fl
 		return localHits, nil
 	}
 
-	payload := map[string]any{"embedding": embedding, "limit": limit}
+	payload := map[string]any{
+		"embedding":       embedding,
+		"limit":           limit,
+		"organization_id": tenant.OrgID,
+		"workspace_id":    tenant.WorkspaceID,
+	}
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return nil, err

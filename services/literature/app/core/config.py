@@ -1,5 +1,6 @@
 from functools import lru_cache
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -17,8 +18,14 @@ class Settings(BaseSettings):
     opensearch_url: str = "http://opensearch:9200"
     jwt_secret: str = "change_this_dev_secret_before_deploying"
 
-    kg_service_url: str = "http://kg:8000"
-    okf_wiki_url: str | None = None
+    kg_service_url: str = "http://kg:8083"
+    # LLM_WIKI_URL is the repo-wide canonical env var (see root .env.example
+    # and services/search); OKF_WIKI_URL is kept as a fallback alias so
+    # existing literature-only deployments don't break.
+    okf_wiki_url: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("LLM_WIKI_URL", "OKF_WIKI_URL"),
+    )
     okf_wiki_dir: str = "wiki-root"
 
     llm_provider: str | None = None
@@ -37,7 +44,10 @@ class Settings(BaseSettings):
     kg_max_retries: int = 1
     kg_backoff_seconds: float = 0.25
 
-    wiki_api_key: str | None = None
+    wiki_api_key: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("LLM_WIKI_API_KEY", "WIKI_API_KEY"),
+    )
     wiki_timeout: float = 5.0
     wiki_max_retries: int = 1
     wiki_backoff_seconds: float = 0.25
@@ -59,7 +69,7 @@ class Settings(BaseSettings):
     medrxiv_base_url: str = "https://api.biorxiv.org/details/medrxiv"
 
     # Services URLs and parameters
-    search_service_url: str = "http://search:8000"
+    search_service_url: str = "http://search:8084"
     kg_service_timeout_seconds: float = 5.0
     kg_service_max_retries: int = 3
     llmwiki_service_url: str = "http://wiki:8000"

@@ -90,6 +90,7 @@ func main() {
 		r.Get("/", h.Query)
 		r.Post("/", h.Hybrid)
 		r.Post("/index", h.Index)
+		r.Post("/context", h.Context)
 		r.Get("/stream", h.StreamQuery)
 		r.Post("/stream", h.StreamHybrid)
 	})

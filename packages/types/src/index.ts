@@ -70,11 +70,77 @@ export type AgentTask = z.infer<typeof AgentTaskSchema>;
 export const SearchResultSchema = z.object({
   id: z.string(),
   score: z.number(),
-  source: z.enum(["opensearch", "pgvector", "graph"]),
+  // "pgvector" is retained for backward compatibility with existing
+  // callers; services/search's actual retrieval providers are llm_wiki
+  // (default) and google_okf — see services/search/internal/search/provider.go.
+  source: z.enum(["opensearch", "pgvector", "llm_wiki", "google_okf", "graph"]),
   title: z.string(),
   snippet: z.string().optional(),
 });
 export type SearchResult = z.infer<typeof SearchResultSchema>;
+
+/** Organization/workspace/project scope, mirroring packages/tenancy's
+ * TENANT_ID_CLAIM convention and services/auth's AuthPayload shape. */
+export const TenantScopeSchema = z.object({
+  organizationId: z.string().optional(),
+  workspaceId: z.string().optional(),
+  projectId: z.string().optional(),
+});
+export type TenantScope = z.infer<typeof TenantScopeSchema>;
+
+/** Canonical metadata attached to every LLM Wiki-indexed document/chunk. */
+export const KnowledgeMetadataSchema = z.object({
+  documentId: z.string(),
+  sourceType: z.enum([
+    "paper",
+    "conference_abstract",
+    "clinical_trial",
+    "patent",
+    "company",
+    "drug_pipeline",
+    "kg_derived",
+    "agent_memory",
+    "conversation",
+  ]),
+  sourceId: z.string(),
+  title: z.string(),
+  entityIds: z.array(z.string()).default([]),
+  entityTypes: z.array(z.string()).default([]),
+  version: z.number().int().positive().default(1),
+  createdAt: z.string().datetime().optional(),
+  updatedAt: z.string().datetime().optional(),
+  provenance: z.record(z.string(), z.unknown()).default({}),
+  citation: z.record(z.string(), z.unknown()).default({}),
+}).merge(TenantScopeSchema);
+export type KnowledgeMetadata = z.infer<typeof KnowledgeMetadataSchema>;
+
+/** A chunk of an indexed document, traceable back to its source and tenant. */
+export const ChunkSchema = z.object({
+  chunkId: z.string(),
+  chunkIndex: z.number().int().nonnegative(),
+  text: z.string(),
+  metadata: KnowledgeMetadataSchema,
+});
+export type Chunk = z.infer<typeof ChunkSchema>;
+
+/** A single entry in an agent's scoped memory (services/agents). */
+export const AgentMemoryEntrySchema = z.object({
+  agentId: z.string(),
+  key: z.string(),
+  value: z.unknown(),
+  provenance: z.record(z.string(), z.unknown()).default({}),
+  storedAt: z.number().optional(),
+}).merge(TenantScopeSchema);
+export type AgentMemoryEntry = z.infer<typeof AgentMemoryEntrySchema>;
+
+/** A single conversation turn (services/agents conversation memory). */
+export const ConversationMessageSchema = z.object({
+  role: z.enum(["user", "assistant", "system", "tool"]),
+  content: z.string(),
+  metadata: z.record(z.string(), z.unknown()).default({}),
+  createdAt: z.number().optional(),
+});
+export type ConversationMessage = z.infer<typeof ConversationMessageSchema>;
 
 export const ReportSchema = z.object({
   id: z.string().uuid(),

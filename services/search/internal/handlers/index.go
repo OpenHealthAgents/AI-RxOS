@@ -20,13 +20,21 @@ type indexItem struct {
 }
 
 type batchIndexPayload struct {
-	DocumentID string      `json:"document_id"`
-	Title      string      `json:"title"`
-	Content    string      `json:"content"`
-	Source     string      `json:"source"`
-	Citations  int         `json:"citations"`
-	Documents  []indexItem `json:"documents"`
-	Items      []indexItem `json:"items"`
+	DocumentID string            `json:"document_id"`
+	Title      string            `json:"title"`
+	Content    string            `json:"content"`
+	Source     string            `json:"source"`
+	Citations  int               `json:"citations"`
+	Documents  []indexItem       `json:"documents"`
+	Items      []indexItem       `json:"items"`
+	Tenant     map[string]string `json:"tenant"`
+}
+
+func tenantFromMap(tenant map[string]string) search.TenantScope {
+	return search.TenantScope{
+		OrgID:       tenant["organization_id"],
+		WorkspaceID: tenant["workspace_id"],
+	}
 }
 
 // Index handles POST /api/v1/search/index — indexing document text and vector embeddings
@@ -39,6 +47,7 @@ func (h *SearchHandler) Index(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var items []indexItem
+	var tenant search.TenantScope
 
 	// Try decoding as JSON array first
 	if err := json.Unmarshal(bodyBytes, &items); err != nil {
@@ -52,6 +61,7 @@ func (h *SearchHandler) Index(w http.ResponseWriter, r *http.Request) {
 			}
 			items = []indexItem{single}
 		} else {
+			tenant = tenantFromMap(wrapper.Tenant)
 			if len(wrapper.Documents) > 0 {
 				items = wrapper.Documents
 			} else if len(wrapper.Items) > 0 {
@@ -103,7 +113,7 @@ func (h *SearchHandler) Index(w http.ResponseWriter, r *http.Request) {
 		})
 
 		if h.Vectors != nil {
-			_ = h.Vectors.Upsert(r.Context(), id, item.Title, item.Content, vec)
+			_ = h.Vectors.UpsertForTenant(r.Context(), id, item.Title, item.Content, vec, tenant)
 		}
 		if h.Citations != nil && item.Citations > 0 {
 			h.Citations.SetCitationCount(id, item.Citations)

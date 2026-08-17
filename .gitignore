@@ -39,6 +39,9 @@ pnpm-debug.log*
 .DS_Store
 Thumbs.db
 
+# Claude Code local session settings
+.claude/
+
 # coverage
 coverage/
 .nyc_output/

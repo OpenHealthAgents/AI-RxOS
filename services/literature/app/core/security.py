@@ -1,8 +1,9 @@
 import jwt
-from fastapi import HTTPException, Security, status
+from fastapi import Depends, HTTPException, Security, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.core.config import get_settings
+from app.knowledge.models import TenantContext
 
 settings = get_settings()
 security = HTTPBearer(auto_error=False)
@@ -37,3 +38,20 @@ def get_current_user(
         )
 
     return payload
+
+
+current_user_dependency = Depends(get_current_user)
+
+
+def get_tenant_context(
+    auth_payload: dict[str, str] = current_user_dependency,
+) -> TenantContext:
+    """Derive the caller's organization/workspace/project scope from the JWT.
+
+    Mirrors services/auth's legacy claim shape (`organizationId`, `roles` —
+    see services/auth/src/tenantContext.ts::AuthPayload). workspaceId/
+    projectId are not yet issued by the auth service's JWTs (see the auth
+    audit), so those fields are simply absent/None until that's added —
+    this function does not invent claims that aren't there.
+    """
+    return TenantContext.from_claims(auth_payload)

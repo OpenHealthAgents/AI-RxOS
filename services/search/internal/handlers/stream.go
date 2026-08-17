@@ -104,7 +104,7 @@ func (h *SearchHandler) StreamHybrid(w http.ResponseWriter, r *http.Request) {
 		if source == "" {
 			source = search.ProviderLLMWiki
 		}
-		if hits, err := h.Vectors.SimilaritySearch(r.Context(), req.Embedding, req.Limit); err == nil {
+		if hits, err := h.Vectors.SimilaritySearchForTenant(r.Context(), req.Embedding, req.Limit, req.tenant()); err == nil {
 			for i := range hits {
 				if hits[i].Source == "" {
 					hits[i].Source = source
