@@ -5,8 +5,9 @@ from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from app.core.security import get_current_user
+from app.core.security import get_current_user, get_tenant_context
 from app.database.postgres import postgres_manager
+from app.knowledge.models import TenantContext
 from app.orchestrator.manager import IngestionJob as OrchestrationJob
 from app.orchestrator.manager import JobStatus, orchestrator
 from app.schemas import IngestionJob as IngestionJobSchema
@@ -15,6 +16,7 @@ from app.schemas import IngestionRequest
 router = APIRouter(prefix="/ingestion", tags=["Ingestion"])
 
 auth_dependency = Depends(get_current_user)
+tenant_dependency = Depends(get_tenant_context)
 
 
 def _use_postgres() -> bool:
@@ -41,6 +43,7 @@ def _use_postgres() -> bool:
 async def start_ingestion(
     req: IngestionRequest,
     auth_payload: dict[str, str] = auth_dependency,
+    tenant: TenantContext = tenant_dependency,
 ) -> IngestionJobSchema:
     job_id = uuid4()
     if not _use_postgres():
@@ -54,7 +57,7 @@ async def start_ingestion(
             status="pending",
         )
         job_store.save(job_state)
-        literature_service.ingest(req.source, req.query, job_id=job_id_str)
+        literature_service.ingest(req.source, req.query, job_id=job_id_str, tenant=tenant)
         updated_job = job_store.get(job_id_str) or job_state
         status_output = "completed" if updated_job.status == "completed" else updated_job.status
         created_at_dt = datetime.fromisoformat(updated_job.created_at)

@@ -5,10 +5,22 @@ from typing import Any
 
 from app.integrations.kg_client import KGClient
 from app.integrations.wiki_client import LLMWikiClient
+from app.knowledge.models import (
+    TenantContext,
+    deterministic_entity_id,
+    normalize_entity_label,
+)
+from app.nlp.embedding_service import EmbeddingService
 from app.nlp.pipeline import LiteratureNLP
 from app.observability.metrics import metrics
+from app.services.chunking import build_chunks
+from app.services.search_integration import SearchIntegrationService
 
 logger = logging.getLogger(__name__)
+
+
+def _tenant_from_payload(payload: dict[str, Any]) -> TenantContext:
+    return TenantContext.from_claims(payload.get("tenant"))
 
 
 class PipelineStage:
@@ -156,6 +168,42 @@ class DeduplicationStage(PipelineStage):
         return {**payload, "items": deduped, "duplicates": duplicates_found}
 
 
+class ChunkingStage(PipelineStage):
+    """Splits each item's normalized text into provenance-carrying chunks.
+
+    Runs after entity/relationship extraction (so entity_ids can be
+    attached) and before KGUpdateStage/WikiUpdateStage/SearchHandoffStage,
+    which all consume item["chunks"].
+    """
+
+    name = "ChunkingStage"
+
+    def run(self, payload: dict[str, Any]) -> dict[str, Any]:
+        tenant = _tenant_from_payload(payload)
+        for item in payload.get("items", []):
+            document = item.get("document", {})
+            entities = item.get("structured_entities", [])
+            entity_ids: list[str] = []
+            entity_types: list[str] = []
+            for entity in entities:
+                category = entity.get("type") or entity.get("category") or ""
+                label = normalize_entity_label(category)
+                if not label or not entity.get("text"):
+                    continue
+                entity_ids.append(deterministic_entity_id(category, entity["text"]))
+                entity_types.append(label)
+
+            item["chunks"] = build_chunks(
+                document=document,
+                text=item.get("normalized_text") or document.get("content", ""),
+                source_type=document.get("source") or payload.get("source", "unknown"),
+                entity_ids=entity_ids,
+                entity_types=entity_types,
+                tenant=tenant,
+            )
+        return payload
+
+
 class KGUpdateStage(PipelineStage):
     name = "KGUpdateStage"
 
@@ -165,11 +213,13 @@ class KGUpdateStage(PipelineStage):
     def run(self, payload: dict[str, Any]) -> dict[str, Any]:
         kg_results: list[dict[str, Any]] = []
         for item in payload.get("items", []):
-            kg_results.append(
-                self.kg_client.update_knowledge_graph(
-                    item.get("structured_entities", []), item.get("relationships", [])
-                )
+            result = self.kg_client.update_knowledge_graph(
+                item.get("structured_entities", []), item.get("relationships", [])
             )
+            # Shares deterministic entity ids with the wiki chunks built in
+            # ChunkingStage, so WikiUpdateStage can link back to KG nodes.
+            item["kg_entity_id_map"] = result.get("entity_id_map", {})
+            kg_results.append(result)
         return {**payload, "kg_updates": kg_results}
 
 
@@ -180,6 +230,7 @@ class WikiUpdateStage(PipelineStage):
         self.wiki_client = wiki_client
 
     def run(self, payload: dict[str, Any]) -> dict[str, Any]:
+        tenant = _tenant_from_payload(payload).as_dict()
         wiki_results: list[dict[str, Any]] = []
         for item in payload.get("items", []):
             wiki_results.append(
@@ -187,6 +238,71 @@ class WikiUpdateStage(PipelineStage):
                     item.get("document", {}),
                     item.get("structured_entities", []),
                     item.get("structured_summary", {}),
+                    relationships=item.get("relationships", []),
+                    evidence=item.get("evidence", []),
+                    tenant=tenant,
+                    chunks=item.get("chunks", []),
                 )
             )
         return {**payload, "wiki_updates": wiki_results, "status": "completed"}
+
+
+class SearchHandoffStage(PipelineStage):
+    """Feeds indexed chunks + embeddings to the search service.
+
+    This is the previously-missing link between the literature pipeline
+    (Prompt 6) and search's semantic retrieval (Prompt 7): without it,
+    LLMWikiProvider's local QMD index never receives any content. Failures
+    are recorded per item rather than raised, matching the degrade-gracefully
+    behavior of KGUpdateStage/WikiUpdateStage's underlying clients — a
+    search outage should not fail literature ingestion.
+    """
+
+    name = "SearchHandoffStage"
+
+    def __init__(
+        self,
+        search_client: SearchIntegrationService,
+        embedding_service: EmbeddingService,
+    ):
+        self.search_client = search_client
+        self.embedding_service = embedding_service
+
+    def run(self, payload: dict[str, Any]) -> dict[str, Any]:
+        tenant = _tenant_from_payload(payload).as_dict()
+        handoff_results: list[dict[str, Any]] = []
+        for item in payload.get("items", []):
+            chunks = item.get("chunks", [])
+            if not chunks:
+                continue
+            document_id = str(
+                chunks[0]["metadata"].get("document_id")
+                or item.get("document", {}).get("source_id")
+                or ""
+            )
+            if not document_id:
+                continue
+            documents = [
+                {
+                    "id": chunk["chunk_id"],
+                    "document_id": document_id,
+                    "title": chunk["metadata"].get("title", ""),
+                    "content": chunk["text"],
+                    "source": chunk["metadata"].get("source_type", "literature_service"),
+                    "embedding": self.embedding_service.embed_text(chunk["text"]),
+                }
+                for chunk in chunks
+            ]
+            try:
+                result = self.search_client.submit_embeddings(
+                    document_id, documents, tenant=tenant
+                )
+            except RuntimeError as exc:
+                metrics.increment("literature.search_handoff.failure")
+                result = {
+                    "document_id": document_id,
+                    "status": "failed",
+                    "error": str(exc),
+                }
+            handoff_results.append(result)
+        return {**payload, "search_handoffs": handoff_results}

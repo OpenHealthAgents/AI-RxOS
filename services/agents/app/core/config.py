@@ -17,6 +17,11 @@ class Settings(BaseSettings):
     opensearch_url: str = "http://opensearch:9200"
     jwt_secret: str = "change_this_dev_secret_before_deploying"
 
+    # Canonical LLM Wiki URL (see root .env.example / services/search). When
+    # unset, long-term agent memory persistence is skipped rather than
+    # pointed at a service that doesn't exist in this repo's docker-compose.
+    llm_wiki_url: str | None = None
+
 
 @lru_cache
 def get_settings() -> Settings:

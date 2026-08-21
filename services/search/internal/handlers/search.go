@@ -18,9 +18,15 @@ type SearchHandler struct {
 }
 
 type hybridRequest struct {
-	Query     string    `json:"query"`
-	Embedding []float32 `json:"embedding,omitempty"`
-	Limit     int       `json:"limit,omitempty"`
+	Query          string    `json:"query"`
+	Embedding      []float32 `json:"embedding,omitempty"`
+	Limit          int       `json:"limit,omitempty"`
+	OrganizationID string    `json:"organization_id,omitempty"`
+	WorkspaceID    string    `json:"workspace_id,omitempty"`
+}
+
+func (r hybridRequest) tenant() search.TenantScope {
+	return search.TenantScope{OrgID: r.OrganizationID, WorkspaceID: r.WorkspaceID}
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
@@ -92,7 +98,7 @@ func (h *SearchHandler) Hybrid(w http.ResponseWriter, r *http.Request) {
 		if source == "" {
 			source = search.ProviderLLMWiki
 		}
-		if hits, err := h.Vectors.SimilaritySearch(r.Context(), req.Embedding, req.Limit*2); err == nil {
+		if hits, err := h.Vectors.SimilaritySearchForTenant(r.Context(), req.Embedding, req.Limit*2, req.tenant()); err == nil {
 			for i := range hits {
 				if hits[i].Source == "" {
 					hits[i].Source = source

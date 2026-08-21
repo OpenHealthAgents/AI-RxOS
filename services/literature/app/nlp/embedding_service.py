@@ -89,6 +89,10 @@ class EmbeddingService:
             EMBEDDING_GENERATION_ERRORS_TOTAL.inc()
             raise
 
+    def embed_text(self, text: str) -> list[float]:
+        """Public entry point for embedding a single arbitrary string (e.g. a chunk)."""
+        return self._vectorize_text(text)
+
     def _create_batches(self, items: list[str]) -> list[list[str]]:
         batches: list[list[str]] = []
         for index in range(0, len(items), self.batch_size):

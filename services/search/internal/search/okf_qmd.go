@@ -9,6 +9,44 @@ import (
 	"unicode"
 )
 
+// TenantScope identifies the organization/workspace a document or query is
+// scoped to. The zero value means "no tenant" (shared/public content, or an
+// unscoped/admin query) — this keeps every pre-existing caller (including
+// the QMD benchmark suite, which has no tenant concept at all) working
+// unchanged after tenant scoping was added.
+type TenantScope struct {
+	OrgID       string
+	WorkspaceID string
+}
+
+// matches reports whether a document scoped to docTenant is visible to a
+// query scoped to t.
+//
+//   - An unscoped query (t.OrgID == "") sees everything — back-compat for
+//     admin tooling and the benchmark suite.
+//   - Untenanted/shared documents (docTenant.OrgID == "") are visible to
+//     every tenant.
+//   - Otherwise OrgID must match exactly (cross-organization access is
+//     always blocked), and if the document also specifies a workspace,
+//     WorkspaceID must match exactly too (cross-workspace access to
+//     workspace-private content is always blocked). A document with an
+//     OrgID but no WorkspaceID is treated as org-shared.
+func (t TenantScope) matches(docTenant TenantScope) bool {
+	if t.OrgID == "" {
+		return true
+	}
+	if docTenant.OrgID == "" {
+		return true
+	}
+	if t.OrgID != docTenant.OrgID {
+		return false
+	}
+	if docTenant.WorkspaceID == "" {
+		return true
+	}
+	return t.WorkspaceID == docTenant.WorkspaceID
+}
+
 // QMDDocument represents an item indexed in the local QMD engine over OKF concepts.
 type QMDDocument struct {
 	ID        string
@@ -19,6 +57,7 @@ type QMDDocument struct {
 	Citations int
 	Length    int
 	Tokens    map[string]int
+	Tenant    TenantScope
 }
 
 // QMDEngine provides high-speed in-memory QMD (Query-Metadata-Document) hybrid search
@@ -61,8 +100,17 @@ func tokenize(text string) []string {
 	return tokens
 }
 
-// IndexDocument adds or updates a document in the QMD inverted index and vector store.
+// IndexDocument adds or updates a document in the QMD inverted index and
+// vector store. It is untenanted (documents indexed this way are visible to
+// every query) — kept for backward compatibility with existing callers
+// (e.g. the benchmark suite). Use IndexDocumentForTenant to scope a
+// document to an organization/workspace.
 func (e *QMDEngine) IndexDocument(id, title, content, source string, embedding []float32, citations int) {
+	e.IndexDocumentForTenant(id, title, content, source, embedding, citations, TenantScope{})
+}
+
+// IndexDocumentForTenant is IndexDocument with an explicit tenant scope.
+func (e *QMDEngine) IndexDocumentForTenant(id, title, content, source string, embedding []float32, citations int, tenant TenantScope) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
@@ -94,6 +142,7 @@ func (e *QMDEngine) IndexDocument(id, title, content, source string, embedding [
 		Citations: citations,
 		Length:    docLen,
 		Tokens:    tokenCounts,
+		Tenant:    tenant,
 	}
 	e.docs[id] = doc
 	e.totalLength += docLen
@@ -103,8 +152,15 @@ func (e *QMDEngine) IndexDocument(id, title, content, source string, embedding [
 	}
 }
 
-// SearchBM25 calculates lexical BM25 scores across matching indexed documents.
+// SearchBM25 calculates lexical BM25 scores across matching indexed
+// documents. Untenanted — sees every indexed document regardless of tenant.
+// Use SearchBM25ForTenant to enforce organization/workspace isolation.
 func (e *QMDEngine) SearchBM25(ctx context.Context, query string, limit int) ([]Hit, error) {
+	return e.SearchBM25ForTenant(ctx, query, limit, TenantScope{})
+}
+
+// SearchBM25ForTenant is SearchBM25 filtered to documents visible to tenant.
+func (e *QMDEngine) SearchBM25ForTenant(ctx context.Context, query string, limit int, tenant TenantScope) ([]Hit, error) {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 
@@ -154,6 +210,9 @@ func (e *QMDEngine) SearchBM25(ctx context.Context, query string, limit int) ([]
 	var hits []Hit
 	for id, score := range scores {
 		doc := e.docs[id]
+		if !tenant.matches(doc.Tenant) {
+			continue
+		}
 		hits = append(hits, Hit{
 			ID:      doc.ID,
 			Title:   doc.Title,
@@ -188,8 +247,15 @@ func cosineSimilarity(a, b []float32) float64 {
 	return dot / (math.Sqrt(normA) * math.Sqrt(normB))
 }
 
-// SearchVector performs dense vector similarity ranking across indexed QMD documents.
+// SearchVector performs dense vector similarity ranking across indexed QMD
+// documents. Untenanted — sees every indexed document regardless of tenant.
+// Use SearchVectorForTenant to enforce organization/workspace isolation.
 func (e *QMDEngine) SearchVector(ctx context.Context, embedding []float32, limit int) ([]Hit, error) {
+	return e.SearchVectorForTenant(ctx, embedding, limit, TenantScope{})
+}
+
+// SearchVectorForTenant is SearchVector filtered to documents visible to tenant.
+func (e *QMDEngine) SearchVectorForTenant(ctx context.Context, embedding []float32, limit int, tenant TenantScope) ([]Hit, error) {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 
@@ -200,6 +266,9 @@ func (e *QMDEngine) SearchVector(ctx context.Context, embedding []float32, limit
 	var hits []Hit
 	for _, doc := range e.docs {
 		if len(doc.Embedding) == 0 {
+			continue
+		}
+		if !tenant.matches(doc.Tenant) {
 			continue
 		}
 		sim := cosineSimilarity(embedding, doc.Embedding)
@@ -220,10 +289,18 @@ func (e *QMDEngine) SearchVector(ctx context.Context, embedding []float32, limit
 	return hits, nil
 }
 
-// SearchHybrid combines BM25 lexical scores and local vector cosine similarity.
+// SearchHybrid combines BM25 lexical scores and local vector cosine
+// similarity. Untenanted — sees every indexed document regardless of
+// tenant. Use SearchHybridForTenant to enforce organization/workspace
+// isolation.
 func (e *QMDEngine) SearchHybrid(ctx context.Context, query string, embedding []float32, limit int) ([]Hit, error) {
-	bm25Hits, _ := e.SearchBM25(ctx, query, limit*2)
-	vectorHits, _ := e.SearchVector(ctx, embedding, limit*2)
+	return e.SearchHybridForTenant(ctx, query, embedding, limit, TenantScope{})
+}
+
+// SearchHybridForTenant is SearchHybrid filtered to documents visible to tenant.
+func (e *QMDEngine) SearchHybridForTenant(ctx context.Context, query string, embedding []float32, limit int, tenant TenantScope) ([]Hit, error) {
+	bm25Hits, _ := e.SearchBM25ForTenant(ctx, query, limit*2, tenant)
+	vectorHits, _ := e.SearchVectorForTenant(ctx, embedding, limit*2, tenant)
 
 	merged := make(map[string]*Hit)
 	for _, h := range bm25Hits {

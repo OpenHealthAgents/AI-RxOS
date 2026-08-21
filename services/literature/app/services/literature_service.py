@@ -7,19 +7,24 @@ from app.connectors.factory import ConnectorFactory
 from app.database.models import IngestionJobState, job_store
 from app.integrations.kg_client import KGClient
 from app.integrations.wiki_client import LLMWikiClient
+from app.knowledge.models import TenantContext
+from app.nlp.embedding_service import EmbeddingService
 from app.nlp.pipeline import LiteratureNLP
 from app.observability.metrics import metrics
 from app.orchestrator.pipeline import PipelineRunner
 from app.orchestrator.stages import (
+    ChunkingStage,
     DeduplicationStage,
     EvidenceRankingStage,
     KGUpdateStage,
     NERStage,
     ParsingStage,
     RelationshipExtractionStage,
+    SearchHandoffStage,
     SummarizationStage,
     WikiUpdateStage,
 )
+from app.services.search_integration import SearchIntegrationService
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +37,8 @@ class LiteratureService:
         self.nlp = LiteratureNLP(self.config)
         self.kg_client = KGClient(self.config)
         self.wiki_client = LLMWikiClient(self.config)
+        self.search_client = SearchIntegrationService()
+        self.embedding_service = EmbeddingService()
 
         self.pipeline = PipelineRunner(
             stages=[
@@ -41,15 +48,24 @@ class LiteratureService:
                 SummarizationStage(self.nlp),
                 EvidenceRankingStage(self.nlp),
                 DeduplicationStage(self.nlp),
+                ChunkingStage(),
                 KGUpdateStage(self.kg_client),
                 WikiUpdateStage(self.wiki_client),
+                SearchHandoffStage(self.search_client, self.embedding_service),
             ],
             retries=2,
             delay_seconds=0.05,
         )
 
 
-    def ingest(self, source: str, query: str, job_id: str | None = None, **kwargs: Any) -> dict[str, Any]:
+    def ingest(
+        self,
+        source: str,
+        query: str,
+        job_id: str | None = None,
+        tenant: TenantContext | None = None,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
         connector_config = {**self.config, **kwargs}
         connector = ConnectorFactory.create(source, connector_config)
         source_status = connector.connect()
@@ -64,6 +80,7 @@ class LiteratureService:
             "items": results,
             "limitation": connector.get_limitation(),
             "source_status": source_status,
+            "tenant": (tenant or TenantContext()).as_dict(),
         }
 
         if job_id:

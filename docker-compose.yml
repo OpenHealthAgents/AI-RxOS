@@ -109,10 +109,13 @@ services:
     env_file: .env
     environment:
       PORT: "8084"
+      LLM_WIKI_URL: http://llm-wiki:8092
+      LLM_WIKI_API_KEY: ${LLM_WIKI_API_KEY:-}
     ports: ["8084:8084"]
     depends_on:
       postgres: { condition: service_healthy }
       opensearch: { condition: service_healthy }
+      llm-wiki: { condition: service_started }
     networks: [ai-rxos]
     restart: unless-stopped
 
@@ -147,7 +150,15 @@ services:
     build: { context: ., dockerfile: services/literature/Dockerfile }
     environment:
       PORT: "8082"
+      LLM_WIKI_URL: http://llm-wiki:8092
+      LLM_WIKI_API_KEY: ${LLM_WIKI_API_KEY:-}
     ports: ["8082:8082"]
+    # Overrides (not merges with) the x-py-service anchor's depends_on, so
+    # postgres/redis are repeated here alongside llm-wiki.
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      llm-wiki: { condition: service_started }
 
   kg:
     <<: *py-service
@@ -201,6 +212,14 @@ services:
     ports: ["8091:8091"]
     depends_on:
       neo4j: { condition: service_healthy }
+
+  llm-wiki:
+    <<: *py-service
+    build: { context: ., dockerfile: services/llm-wiki/Dockerfile }
+    environment:
+      PORT: "8092"
+      LLM_WIKI_API_KEY: ${LLM_WIKI_API_KEY:-}
+    ports: ["8092:8092"]
 
   # ── Frontends ────────────────────────────────────────────────────────
   web:
