@@ -94,11 +94,17 @@ class MultiAgentOrchestrator:
         *,
         state: AgentState | None = None,
         resume_run_id: str | None = None,
+        event_sink=None,
     ) -> AgentState:
         isolated_state = state.model_copy(deep=True) if state is not None and resume_run_id is None else state
         if isolated_state is not None:
             isolated_state.current_node = None
-        return await self._build_graph().run(runtime, state=isolated_state, resume_run_id=resume_run_id)
+        return await self._build_graph().run(
+            runtime,
+            state=isolated_state,
+            resume_run_id=resume_run_id,
+            event_sink=event_sink,
+        )
 
     async def run_parallel(
         self,

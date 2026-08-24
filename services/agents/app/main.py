@@ -6,7 +6,7 @@ from typing import Any, Literal
 
 import redis.asyncio as redis
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.core.config import get_settings
 from app.agent_harness import AgentState, InMemoryCheckpointStore, StateGraph
@@ -111,27 +111,52 @@ class AgentInvokeRequest(BaseModel):
     async_mode: bool = False
 
 
+class AgentProgress(BaseModel):
+    current_step: str | None = None
+    completed_steps: int = 0
+    total_steps: int | None = None
+    total_steps_status: Literal["known", "in_progress"] = "in_progress"
+    events: list[dict[str, Any]] = []
+
+
 class AgentTask(BaseModel):
     id: str
     agentType: str
     status: Literal["pending", "running", "succeeded", "failed"]
     input: dict[str, Any]
     result: dict[str, Any] | None = None
+    progress: AgentProgress = Field(default_factory=AgentProgress)
 
 
 async def _execute_task(task: AgentTask) -> None:
+    async def record_event(event: dict[str, Any]) -> None:
+        if event["type"] == "node_started":
+            task.progress.current_step = event.get("node")
+        elif event["type"] == "node_completed":
+            task.progress.completed_steps += 1
+            task.progress.current_step = event.get("next_node")
+        elif event["type"] in {"run_completed", "run_error"}:
+            task.progress.current_step = None
+        task.progress.events = [*task.progress.events[-49:], event]
+        await _redis.set(TASK_KEY.format(id=task.id), task.model_dump_json(), ex=86400)
+
     task.status = "running"
     await _redis.set(TASK_KEY.format(id=task.id), task.model_dump_json(), ex=86400)
     try:
         result = await orchestrator.run(
             agent_runtime,
             state=AgentState(run_id=task.id, data={"input": task.input, "agent_type": task.agentType}),
+            event_sink=record_event,
         )
         task.status = "succeeded"
         task.result = result.data
+        task.progress.current_step = None
+        task.progress.total_steps_status = "known"
+        task.progress.total_steps = task.progress.completed_steps
     except Exception as exc:  # noqa: BLE001
         task.status = "failed"
         task.result = {"error": str(exc)}
+        task.progress.current_step = None
     await _redis.set(TASK_KEY.format(id=task.id), task.model_dump_json(), ex=86400)
 
 
