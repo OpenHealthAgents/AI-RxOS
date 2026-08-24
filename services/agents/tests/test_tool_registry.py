@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from typing import Any
 
 import httpx
 import pytest
@@ -127,3 +128,82 @@ async def test_mcp_client_local_http_smoke_path():
     finally:
         server.shutdown()
         thread.join(timeout=2)
+
+
+@pytest.mark.asyncio
+async def test_mcp_session_is_reused_across_list_and_call_requests():
+    methods: list[str] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content)
+        methods.append(payload["method"])
+        if payload["method"] == "initialize":
+            return httpx.Response(200, headers={"Mcp-Session-Id": "session-1"}, json={"jsonrpc": "2.0", "id": payload["id"], "result": {"protocolVersion": "2024-11-05"}}, request=request)
+        if payload["method"] == "tools/list":
+            result = {"tools": [{"name": "echo", "inputSchema": {"type": "object"}}]}
+        else:
+            result = {"structuredContent": {"echo": payload["params"]["arguments"]["value"]}}
+        return httpx.Response(200, json={"jsonrpc": "2.0", "id": payload["id"], "result": result}, request=request)
+
+    client = MCPClient("https://mcp.test", client=httpx.AsyncClient(transport=httpx.MockTransport(handler)))
+    registry = ToolRegistry()
+    await client.import_tools(registry)
+    await registry.execute("echo", {"value": "one"})
+    await registry.execute("echo", {"value": "two"})
+
+    assert methods == ["initialize", "tools/list", "tools/call", "tools/call"]
+
+
+@pytest.mark.asyncio
+async def test_mcp_session_reconnects_after_transport_failure():
+    methods: list[str] = []
+    call_count = 0
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal call_count
+        payload = json.loads(request.content)
+        methods.append(payload["method"])
+        if payload["method"] == "initialize":
+            session = f"session-{methods.count('initialize')}"
+            return httpx.Response(200, headers={"Mcp-Session-Id": session}, json={"jsonrpc": "2.0", "id": payload["id"], "result": {"protocolVersion": "2024-11-05"}}, request=request)
+        if payload["method"] == "tools/list":
+            return httpx.Response(200, json={"jsonrpc": "2.0", "id": payload["id"], "result": {"tools": []}}, request=request)
+        call_count += 1
+        if call_count == 1:
+            return httpx.Response(503, request=request)
+        return httpx.Response(200, json={"jsonrpc": "2.0", "id": payload["id"], "result": {"structuredContent": {"ok": True}}}, request=request)
+
+    client = MCPClient("https://mcp.test", client=httpx.AsyncClient(transport=httpx.MockTransport(handler)))
+    result = await client.call_tool("recover", {})
+
+    assert result == {"ok": True}
+    assert methods == ["initialize", "tools/call", "initialize", "tools/call"]
+
+
+@pytest.mark.asyncio
+async def test_mcp_streaming_tool_result_is_forwarded_to_event_sink():
+    events: list[dict[str, Any]] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content)
+        if payload["method"] == "initialize":
+            return httpx.Response(200, json={"jsonrpc": "2.0", "id": payload["id"], "result": {"protocolVersion": "2024-11-05"}}, request=request)
+        stream = 'data: {"content":[{"type":"text","text":"hello"}]}\n\n' \
+            'data: {"content":[{"type":"text","text":" world"}]}\n\n'
+        return httpx.Response(200, headers={"content-type": "text/event-stream"}, content=stream, request=request)
+
+    async def sink(event):
+        events.append(event)
+
+    client = MCPClient(
+        "https://mcp.test",
+        client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+        event_sink=sink,
+    )
+    result = await client.call_tool("streaming", {})
+
+    assert result == "hello world"
+    assert events == [
+        {"type": "mcp_tool_chunk", "name": "streaming", "content": "hello"},
+        {"type": "mcp_tool_chunk", "name": "streaming", "content": " world"},
+    ]
