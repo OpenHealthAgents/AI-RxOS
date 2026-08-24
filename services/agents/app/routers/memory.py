@@ -1,10 +1,11 @@
 from typing import Any
+import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from app.core.security import TenantContext, get_tenant_context
-from app.memory.store import AgentMemoryStore
+from app.memory.llm_wiki import AgentMemory, create_agent_memory
 
 router = APIRouter(prefix="/api/v1/agents/memory", tags=["Agent Memory"])
 
@@ -19,10 +20,10 @@ class StoreMemoryRequest(BaseModel):
     persist_long_term: bool = False
 
 
-def get_memory_store() -> AgentMemoryStore:
-    from app.main import agent_memory_store
+def get_memory_store(tenant: TenantContext = tenant_dependency) -> AgentMemory:
+    from app.main import _redis
 
-    return agent_memory_store
+    return create_agent_memory(str(uuid.uuid4()), tenant, redis_client=_redis)
 
 
 memory_store_dependency = Depends(get_memory_store)
@@ -32,7 +33,7 @@ memory_store_dependency = Depends(get_memory_store)
 async def store_memory(
     req: StoreMemoryRequest,
     tenant: TenantContext = tenant_dependency,
-    store: AgentMemoryStore = memory_store_dependency,
+    store: AgentMemory = memory_store_dependency,
 ) -> dict[str, Any]:
     return await store.store(
         tenant=tenant,
@@ -49,7 +50,7 @@ async def retrieve_memory(
     agent_id: str,
     key: str,
     tenant: TenantContext = tenant_dependency,
-    store: AgentMemoryStore = memory_store_dependency,
+    store: AgentMemory = memory_store_dependency,
 ) -> dict[str, Any]:
     record = await store.retrieve(tenant=tenant, agent_id=agent_id, key=key)
     if record is None:
@@ -63,7 +64,7 @@ async def search_memory(
     query: str | None = None,
     limit: int = 10,
     tenant: TenantContext = tenant_dependency,
-    store: AgentMemoryStore = memory_store_dependency,
+    store: AgentMemory = memory_store_dependency,
 ) -> dict[str, Any]:
     records = await store.search(tenant=tenant, agent_id=agent_id, query=query, limit=limit)
     return {"items": records, "total": len(records)}

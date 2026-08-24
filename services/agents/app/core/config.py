@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     # unset, long-term agent memory persistence is skipped rather than
     # pointed at a service that doesn't exist in this repo's docker-compose.
     llm_wiki_url: str | None = None
+    model_registry_json: str | None = None
 
 
 @lru_cache

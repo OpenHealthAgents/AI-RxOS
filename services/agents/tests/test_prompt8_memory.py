@@ -11,12 +11,13 @@ import pytest
 
 from app.core.config import get_settings
 from app.core.security import TenantContext
-from app.memory.store import AgentMemoryStore, ConversationMemoryStore
+from app.memory.llm_wiki import AgentMemory
+from app.memory.conversation import ConversationMemoryStore
 
 
 class FakeRedis:
     """Minimal in-memory stand-in for redis.asyncio.Redis, covering only
-    the operations AgentMemoryStore/ConversationMemoryStore use."""
+    the operations AgentMemory/ConversationMemoryStore use."""
 
     def __init__(self) -> None:
         self._values: dict[str, str] = {}
@@ -44,13 +45,13 @@ ORG_B = TenantContext(organization_id="org-b", workspace_id="ws-1", user_id="use
 
 
 # ---------------------------------------------------------------------------
-# AgentMemoryStore
+# AgentMemory
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_agent_memory_store_and_retrieve_roundtrip():
-    store = AgentMemoryStore(FakeRedis())
+async def test_agent_memory_and_retrieve_roundtrip():
+    store = AgentMemory(FakeRedis())
     await store.store(tenant=ORG_A, agent_id="literature-agent", key="last_query", value={"q": "HER2"})
 
     record = await store.retrieve(tenant=ORG_A, agent_id="literature-agent", key="last_query")
@@ -62,7 +63,7 @@ async def test_agent_memory_store_and_retrieve_roundtrip():
 
 @pytest.mark.asyncio
 async def test_agent_memory_search_filters_by_query_substring():
-    store = AgentMemoryStore(FakeRedis())
+    store = AgentMemory(FakeRedis())
     await store.store(tenant=ORG_A, agent_id="a1", key="k1", value="HER2 targeted therapy")
     await store.store(tenant=ORG_A, agent_id="a1", key="k2", value="unrelated content")
 
@@ -73,7 +74,7 @@ async def test_agent_memory_search_filters_by_query_substring():
 
 @pytest.mark.asyncio
 async def test_agent_memory_is_isolated_across_organizations():
-    store = AgentMemoryStore(FakeRedis())
+    store = AgentMemory(FakeRedis())
     await store.store(tenant=ORG_A, agent_id="a1", key="secret", value="org-a-data")
 
     # Same agent_id/key, different organization -> nothing visible.
@@ -86,7 +87,7 @@ async def test_agent_memory_is_isolated_across_organizations():
 
 @pytest.mark.asyncio
 async def test_agent_memory_is_isolated_across_workspaces_in_same_org():
-    store = AgentMemoryStore(FakeRedis())
+    store = AgentMemory(FakeRedis())
     await store.store(tenant=ORG_A, agent_id="a1", key="secret", value="ws-1-data")
 
     record = await store.retrieve(tenant=ORG_A_WS2, agent_id="a1", key="secret")
@@ -95,7 +96,7 @@ async def test_agent_memory_is_isolated_across_workspaces_in_same_org():
 
 @pytest.mark.asyncio
 async def test_agent_memory_long_term_persist_is_skipped_without_llm_wiki_url():
-    store = AgentMemoryStore(FakeRedis())
+    store = AgentMemory(FakeRedis())
     record = await store.store(
         tenant=ORG_A, agent_id="a1", key="k1", value="v1", persist_long_term=True
     )
@@ -171,7 +172,7 @@ def api_client(monkeypatch):
     import app.main as main_module
 
     fake_redis = FakeRedis()
-    monkeypatch.setattr(main_module, "agent_memory_store", AgentMemoryStore(fake_redis))
+    monkeypatch.setattr(main_module, "_redis", fake_redis)
     monkeypatch.setattr(main_module, "conversation_memory_store", ConversationMemoryStore(fake_redis))
     return TestClient(main_module.app)
 

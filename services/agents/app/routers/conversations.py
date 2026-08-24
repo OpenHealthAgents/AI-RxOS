@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from app.core.security import TenantContext, get_tenant_context
-from app.memory.store import ConversationMemoryStore
+from app.memory.conversation import ConversationMemoryStore
 
 router = APIRouter(prefix="/api/v1/agents/conversations", tags=["Conversation Memory"])
 
