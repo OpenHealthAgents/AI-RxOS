@@ -2,7 +2,12 @@ from __future__ import annotations
 
 import pytest
 
-from app.agent_harness import AgentState, InMemoryCheckpointStore, PlanExecuteNodes, PlanStep
+from app.agent_harness import (
+    AgentState,
+    InMemoryCheckpointStore,
+    PlanExecuteNodes,
+    PlanStep,
+)
 
 
 @pytest.mark.asyncio
@@ -14,8 +19,14 @@ async def test_plan_is_revised_after_step_failure_and_completed_work_is_preserve
         nonlocal planning_calls
         planning_calls += 1
         if planning_calls == 1:
-            return [PlanStep(id="research", description="research"), PlanStep(id="write", description="write")]
-        return [PlanStep(id="research", description="research"), PlanStep(id="write-v2", description="write with fallback")]
+            return [
+                PlanStep(id="research", description="research"),
+                PlanStep(id="write", description="write"),
+            ]
+        return [
+            PlanStep(id="research", description="research"),
+            PlanStep(id="write-v2", description="write with fallback"),
+        ]
 
     async def executor(_state, step, _runtime):
         executions.append(step.id)
@@ -28,7 +39,10 @@ async def test_plan_is_revised_after_step_failure_and_completed_work_is_preserve
 
     nodes = PlanExecuteNodes(planner=planner, executor=executor, reflector=reflector)
     graph = nodes.build_graph(InMemoryCheckpointStore())
-    result = await graph.run(object(), state=AgentState(run_id="plan-1", data={"original_task": "prepare report"}))
+    result = await graph.run(
+        object(),
+        state=AgentState(run_id="plan-1", data={"original_task": "prepare report"}),
+    )
 
     assert result.status == "completed"
     assert planning_calls == 2

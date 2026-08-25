@@ -1,0 +1,13 @@
+{
+  "command": [
+    "C:\\Users\\Lenovo\\Downloads\\AI-RxOS\\.venv-1\\Scripts\\python.exe",
+    "-m",
+    "compileall",
+    "-q",
+    "app",
+    "tests"
+  ],
+  "returncode": 0,
+  "stdout": "",
+  "stderr": ""
+}

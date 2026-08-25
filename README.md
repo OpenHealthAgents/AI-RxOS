@@ -65,6 +65,42 @@ out to the native toolchain (`go build`, `uvicorn`, `pytest`, ...), so Turbo
 can orchestrate the whole polyglot repo (`pnpm build`, `pnpm dev --parallel`,
 etc.) rather than just the JS packages.
 
+## Testing
+
+Run the full workspace test command through Turbo:
+
+```bash
+pnpm test
+```
+
+Do not run `python -m pytest` from the repository root. The Python services
+are independent projects with separate `app` packages, dependency sets, and
+test configuration. A single root pytest process mixes those import roots and
+causes errors such as `ModuleNotFoundError: No module named 'app'`, missing
+service-specific dependencies, and duplicate `test_health` module names.
+
+To run Python tests together from a shell that supports Make:
+
+```bash
+make test-python
+```
+
+Or run a service directly from its own directory, for example:
+
+```bash
+cd services/agents
+python -m pytest -q
+```
+
+The `bezs-pipeline` tests are a separate Python project. Install its project
+and development dependencies from `bezs-pipeline` before running them:
+
+```bash
+cd bezs-pipeline
+python -m pip install -e ".[dev]"
+python -m pytest -q
+```
+
 ## Quickstart — Docker Compose (fastest path to a running system)
 
 ```bash

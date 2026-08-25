@@ -5,15 +5,18 @@ import json
 from collections.abc import AsyncIterator
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.agent_harness.graph import AgentGraph
 from app.agent_harness.runtime import AgentRuntime
 from app.agent_harness.schemas import AgentState
+from app.core.security import TenantContext, get_tenant_context
+from app.security.redaction import sanitize_stream_event
 
 router = APIRouter(prefix="/api/v1/agents", tags=["Agent Streaming"])
+tenant_dependency = Depends(get_tenant_context)
 _graphs: dict[str, tuple[AgentGraph, AgentRuntime]] = {}
 
 
@@ -24,7 +27,9 @@ class StreamRunRequest(BaseModel):
     resume_run_id: str | None = None
 
 
-def register_streaming_graph(name: str, graph: AgentGraph, runtime: AgentRuntime) -> None:
+def register_streaming_graph(
+    name: str, graph: AgentGraph, runtime: AgentRuntime
+) -> None:
     _graphs[name] = (graph, runtime)
 
 
@@ -38,13 +43,15 @@ async def stream_graph(
     events: asyncio.Queue[dict[str, Any] | None] = asyncio.Queue()
 
     async def sink(event: dict[str, Any]) -> None:
-        await events.put(event)
+        await events.put(sanitize_stream_event(event))
 
     async def run_graph() -> None:
         try:
-            await graph.run(runtime, state=state, resume_run_id=resume_run_id, event_sink=sink)
+            await graph.run(
+                runtime, state=state, resume_run_id=resume_run_id, event_sink=sink
+            )
         except Exception as exc:  # noqa: BLE001
-            await events.put({"type": "run_error", "error": str(exc)})
+            await events.put(sanitize_stream_event({"type": "run_error", "error": str(exc)}))
         finally:
             await events.put(None)
 
@@ -62,12 +69,22 @@ async def stream_graph(
 
 
 @router.post("/stream")
-async def stream_agent_run(request: StreamRunRequest) -> StreamingResponse:
+async def stream_agent_run(
+    request: StreamRunRequest,
+    tenant: TenantContext = tenant_dependency,
+) -> StreamingResponse:
     configured = _graphs.get(request.graph)
     if configured is None:
-        raise HTTPException(status_code=404, detail=f"streaming graph not found: {request.graph}")
+        raise HTTPException(
+            status_code=404, detail=f"streaming graph not found: {request.graph}"
+        )
     graph, runtime = configured
-    state = AgentState(run_id=request.run_id, data=request.data) if request.run_id else AgentState(data=request.data)
+    state = (
+        AgentState(run_id=request.run_id, data=request.data)
+        if request.run_id
+        else AgentState(data=request.data)
+    )
+    state.data["tenant"] = tenant.as_dict()
     return StreamingResponse(
         stream_graph(graph, runtime, state, resume_run_id=request.resume_run_id),
         media_type="text/event-stream",

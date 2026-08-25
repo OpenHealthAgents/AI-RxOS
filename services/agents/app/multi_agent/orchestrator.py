@@ -11,10 +11,12 @@ from app.agent_harness.checkpoints import CheckpointStore
 from app.agent_harness.graph import END, AgentGraph, StateGraph
 from app.agent_harness.runtime import AgentRuntime
 from app.agent_harness.schemas import AgentState, RetryPolicy
-from app.multi_agent.schemas import AgentOutcome, Handoff, SupervisorDecision
+from app.multi_agent.schemas import AgentOutcome, SupervisorDecision
 
 AgentHandler = Callable[[AgentState, AgentRuntime], Any | Awaitable[Any]]
-SupervisorHandler = Callable[[AgentState], SupervisorDecision | str | Awaitable[SupervisorDecision | str]]
+SupervisorHandler = Callable[
+    [AgentState], SupervisorDecision | str | Awaitable[SupervisorDecision | str]
+]
 logger = logging.getLogger(__name__)
 
 
@@ -45,7 +47,9 @@ class MultiAgentOrchestrator:
     def _build_graph(self) -> AgentGraph:
         graph = StateGraph()
 
-        async def supervisor_node(state: AgentState, _runtime: AgentRuntime) -> AgentState:
+        async def supervisor_node(
+            state: AgentState, _runtime: AgentRuntime
+        ) -> AgentState:
             decision = self._supervisor(state)
             if inspect.isawaitable(decision):
                 decision = await decision
@@ -69,6 +73,7 @@ class MultiAgentOrchestrator:
 
     def _agent_node(self, agent: AgentSpec):
         async def execute(state: AgentState, runtime: AgentRuntime) -> AgentState:
+            runtime.set_agent_name(agent.name)
             result = agent.handler(state, runtime)
             if inspect.isawaitable(result):
                 result = await result
@@ -83,7 +88,9 @@ class MultiAgentOrchestrator:
             elif isinstance(result, dict):
                 state.data.update(result)
             else:
-                raise TypeError(f"agent {agent.name} must return AgentOutcome, AgentState, or dict")
+                raise TypeError(
+                    f"agent {agent.name} must return AgentOutcome, AgentState, or dict"
+                )
             return state
 
         return execute
@@ -96,7 +103,11 @@ class MultiAgentOrchestrator:
         resume_run_id: str | None = None,
         event_sink=None,
     ) -> AgentState:
-        isolated_state = state.model_copy(deep=True) if state is not None and resume_run_id is None else state
+        isolated_state = (
+            state.model_copy(deep=True)
+            if state is not None and resume_run_id is None
+            else state
+        )
         if isolated_state is not None:
             isolated_state.current_node = None
         return await self._build_graph().run(
@@ -114,7 +125,14 @@ class MultiAgentOrchestrator:
         agent_names: Sequence[str],
     ) -> AgentState:
         """Run independent agents concurrently and merge their update maps."""
-        logger.info("agent_parallel_run_started", extra={"event": "agent_parallel_run_started", "run_id": state.run_id, "agents": list(agent_names)})
+        logger.info(
+            "agent_parallel_run_started",
+            extra={
+                "event": "agent_parallel_run_started",
+                "run_id": state.run_id,
+                "agents": list(agent_names),
+            },
+        )
         if not agent_names or len(set(agent_names)) != len(agent_names):
             raise ValueError("agent_names must contain one or more unique agents")
         missing = [name for name in agent_names if name not in self._agents]
@@ -129,13 +147,24 @@ class MultiAgentOrchestrator:
             if isinstance(result, dict):
                 result = AgentOutcome(updates=result)
             if not isinstance(result, AgentOutcome):
-                raise TypeError(f"parallel agent {name} must return AgentOutcome or dict")
+                raise TypeError(
+                    f"parallel agent {name} must return AgentOutcome or dict"
+                )
             return name, result
 
         results = await asyncio.gather(*(run_one(name) for name in agent_names))
         for name, result in results:
             state.data.update(result.updates)
             if result.handoff:
-                raise ValueError(f"parallel agent {name} returned a handoff; use sequential orchestration")
-        logger.info("agent_parallel_run_completed", extra={"event": "agent_parallel_run_completed", "run_id": state.run_id, "agents": list(agent_names)})
+                raise ValueError(
+                    f"parallel agent {name} returned a handoff; use sequential orchestration"
+                )
+        logger.info(
+            "agent_parallel_run_completed",
+            extra={
+                "event": "agent_parallel_run_completed",
+                "run_id": state.run_id,
+                "agents": list(agent_names),
+            },
+        )
         return state

@@ -1,13 +1,17 @@
 from __future__ import annotations
 
-import asyncio
-import json
+from typing import ClassVar
 
 import jwt
 import pytest
 from fastapi.testclient import TestClient
 
-from app.agent_harness import AgentRuntime, AgentState, InMemoryCheckpointStore, StateGraph
+from app.agent_harness import (
+    AgentRuntime,
+    AgentState,
+    InMemoryCheckpointStore,
+    StateGraph,
+)
 from app.core.config import get_settings
 from app.core.security import TenantContext
 from app.main import app
@@ -34,14 +38,18 @@ class FakeRedis:
 
 
 class SharedWikiAdapter(LLMWikiMemoryAdapter):
-    records: dict[tuple[str | None, str | None, str, str], object] = {}
+    records: ClassVar[dict[tuple[str | None, str | None, str, str], object]] = {}
 
     async def store(self, *, tenant, agent_id, key, value, provenance=None):
-        self.records[(tenant.organization_id, tenant.workspace_id, agent_id, key)] = value
+        self.records[(tenant.organization_id, tenant.workspace_id, agent_id, key)] = (
+            value
+        )
         return {"status": "completed"}
 
     async def retrieve(self, *, tenant, agent_id, key):
-        value = self.records.get((tenant.organization_id, tenant.workspace_id, agent_id, key))
+        value = self.records.get(
+            (tenant.organization_id, tenant.workspace_id, agent_id, key)
+        )
         if value is None:
             return None
         return {
@@ -56,7 +64,11 @@ class SharedWikiAdapter(LLMWikiMemoryAdapter):
 def auth_headers(organization_id: str, workspace_id: str) -> dict[str, str]:
     settings = get_settings()
     token = jwt.encode(
-        {"sub": "consistency-user", "organization_id": organization_id, "workspace_id": workspace_id},
+        {
+            "sub": "consistency-user",
+            "organization_id": organization_id,
+            "workspace_id": workspace_id,
+        },
         settings.jwt_secret,
         algorithm="HS256",
     )
@@ -98,15 +110,24 @@ async def test_api_write_is_visible_to_graph_run_through_same_wiki_path(monkeypa
         models=EmptyModels(),
         prompts=object(),
         tools=object(),
-        tenant=TenantContext(organization_id="org-consistency", workspace_id="workspace-1"),
+        tenant=TenantContext(
+            organization_id="org-consistency", workspace_id="workspace-1"
+        ),
     )
     observed = {}
 
     async def graph_node(state, dependencies):
-        observed["memory"] = await dependencies.memory.retrieve_long_term("researcher", "finding")
+        observed["memory"] = await dependencies.memory.retrieve_long_term(
+            "researcher", "finding"
+        )
         return {}
 
-    graph = StateGraph().add_node("read", graph_node).set_entry_point("read").compile(InMemoryCheckpointStore())
+    graph = (
+        StateGraph()
+        .add_node("read", graph_node)
+        .set_entry_point("read")
+        .compile(InMemoryCheckpointStore())
+    )
     await graph.run(runtime, state=AgentState(run_id="graph-consistency-run"))
 
     assert observed["memory"]["value"] == {"drug": "trastuzumab"}
@@ -125,7 +146,9 @@ async def test_graph_persist_is_visible_to_api_read_through_same_wiki_path(monke
     monkeypatch.setattr(memory_module, "LLMWikiMemoryAdapter", SharedWikiAdapter)
     SharedWikiAdapter.records.clear()
     tenant = TenantContext(organization_id="org-graph", workspace_id="workspace-graph")
-    runtime = AgentRuntime(models=EmptyModels(), prompts=object(), tools=object(), tenant=tenant)
+    runtime = AgentRuntime(
+        models=EmptyModels(), prompts=object(), tools=object(), tenant=tenant
+    )
 
     async def graph_node(state, dependencies):
         await dependencies.memory.persist(
@@ -136,7 +159,12 @@ async def test_graph_persist_is_visible_to_api_read_through_same_wiki_path(monke
         )
         return {}
 
-    graph = StateGraph().add_node("write", graph_node).set_entry_point("write").compile(InMemoryCheckpointStore())
+    graph = (
+        StateGraph()
+        .add_node("write", graph_node)
+        .set_entry_point("write")
+        .compile(InMemoryCheckpointStore())
+    )
     await graph.run(runtime, state=AgentState(run_id="graph-write-run"))
 
     with TestClient(app) as client:

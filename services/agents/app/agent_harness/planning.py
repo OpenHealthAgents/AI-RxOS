@@ -4,11 +4,13 @@ import json
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+from pydantic import BaseModel, Field
+
 from app.agent_harness.graph import END, AgentGraph, StateGraph
 from app.agent_harness.runtime import AgentRuntime
 from app.agent_harness.schemas import AgentState, RetryPolicy
 from app.model_registry.schemas import ModelRequest
-from pydantic import BaseModel, Field
+from app.security.redaction import sanitize_exception
 
 
 class PlanStep(BaseModel):
@@ -25,9 +27,13 @@ class ExecutionPlan(BaseModel):
     revision: int = 0
 
 
-PlanBuilder = Callable[[AgentState, AgentRuntime], list[PlanStep] | Awaitable[list[PlanStep]]]
+PlanBuilder = Callable[
+    [AgentState, AgentRuntime], list[PlanStep] | Awaitable[list[PlanStep]]
+]
 StepExecutor = Callable[[AgentState, PlanStep, AgentRuntime], Any | Awaitable[Any]]
-Reflector = Callable[[AgentState, AgentRuntime], dict[str, Any] | Awaitable[dict[str, Any]]]
+Reflector = Callable[
+    [AgentState, AgentRuntime], dict[str, Any] | Awaitable[dict[str, Any]]
+]
 
 
 class PlanExecuteNodes:
@@ -52,20 +58,32 @@ class PlanExecuteNodes:
 
     async def plan(self, state: AgentState, runtime: AgentRuntime) -> AgentState:
         steps = await self._build_plan(state, runtime)
-        current = ExecutionPlan.model_validate(state.data["plan"]) if state.data.get("plan") else None
-        completed = {step.id: step for step in current.steps if step.status == "completed"} if current else {}
+        current = (
+            ExecutionPlan.model_validate(state.data["plan"])
+            if state.data.get("plan")
+            else None
+        )
+        completed = (
+            {step.id: step for step in current.steps if step.status == "completed"}
+            if current
+            else {}
+        )
         revision = current.revision + 1 if current else 0
         for step in steps:
             if step.id in completed:
                 step.status = "completed"
                 step.result = completed[step.id].result
-        plan = ExecutionPlan(task=state.data.get("original_task", ""), steps=steps, revision=revision)
+        plan = ExecutionPlan(
+            task=state.data.get("original_task", ""), steps=steps, revision=revision
+        )
         state.data["plan"] = plan.model_dump()
         state.data["current_step_index"] = self._next_pending(plan)
         state.data.pop("plan_revision_required", None)
         return state
 
-    async def execute_step(self, state: AgentState, runtime: AgentRuntime) -> AgentState:
+    async def execute_step(
+        self, state: AgentState, runtime: AgentRuntime
+    ) -> AgentState:
         plan = ExecutionPlan.model_validate(state.data["plan"])
         index = state.data.get("current_step_index", self._next_pending(plan))
         if index >= len(plan.steps):
@@ -88,7 +106,7 @@ class PlanExecuteNodes:
             state.data["current_step_index"] = self._next_pending(plan)
         except Exception as exc:  # noqa: BLE001
             step.status = "failed"
-            step.error = str(exc)
+            step.error = sanitize_exception(exc)["error"]
             state.data["plan_revision_required"] = True
             state.data["current_step_index"] = index
         state.data["plan"] = plan.model_dump()
@@ -102,9 +120,14 @@ class PlanExecuteNodes:
         else:
             prompt = await runtime.render_prompt(
                 self.reflection_prompt,
-                {"task": state.data.get("original_task", ""), "result": json.dumps(state.data.get("plan", {}))},
+                {
+                    "task": state.data.get("original_task", ""),
+                    "result": json.dumps(state.data.get("plan", {})),
+                },
             )
-            response = await runtime.call_model(ModelRequest(messages=[{"role": "user", "content": prompt}]))
+            response = await runtime.call_model(
+                ModelRequest(messages=[{"role": "user", "content": prompt}])
+            )
             result = self._parse_reflection(response.content)
         state.data["reflection"] = result
         return state
@@ -118,32 +141,54 @@ class PlanExecuteNodes:
         graph.add_edge("plan", "execute")
         graph.add_conditional_edges(
             "execute",
-            lambda state: "plan" if state.data.get("plan_revision_required") else "reflect" if self._is_complete(state) else "execute",
+            lambda state: (
+                "plan"
+                if state.data.get("plan_revision_required")
+                else "reflect"
+                if self._is_complete(state)
+                else "execute"
+            ),
             {"plan": "plan", "execute": "execute", "reflect": "reflect"},
         )
         graph.add_edge("reflect", END)
         return graph.compile(checkpoint_store)
 
-    async def _build_plan(self, state: AgentState, runtime: AgentRuntime) -> list[PlanStep]:
+    async def _build_plan(
+        self, state: AgentState, runtime: AgentRuntime
+    ) -> list[PlanStep]:
         if self.planner is not None:
             result = self.planner(state, runtime)
             if hasattr(result, "__await__"):
                 result = await result
             return result
-        prompt = await runtime.render_prompt(self.plan_prompt, {"task": state.data.get("original_task", ""), "feedback": json.dumps(state.data.get("plan", {}))})
-        response = await runtime.call_model(ModelRequest(messages=[{"role": "user", "content": prompt}]))
+        prompt = await runtime.render_prompt(
+            self.plan_prompt,
+            {
+                "task": state.data.get("original_task", ""),
+                "feedback": json.dumps(state.data.get("plan", {})),
+            },
+        )
+        response = await runtime.call_model(
+            ModelRequest(messages=[{"role": "user", "content": prompt}])
+        )
         payload = json.loads(response.content)
         return [PlanStep.model_validate(step) for step in payload["steps"]]
 
     @staticmethod
     def _next_pending(plan: ExecutionPlan) -> int:
-        return next((index for index, step in enumerate(plan.steps) if step.status != "completed"), len(plan.steps))
+        return next(
+            (
+                index
+                for index, step in enumerate(plan.steps)
+                if step.status != "completed"
+            ),
+            len(plan.steps),
+        )
 
     @staticmethod
     def _is_complete(state: AgentState) -> bool:
         plan = ExecutionPlan.model_validate(state.data["plan"])
         return all(step.status == "completed" for step in plan.steps)
-
 
     @staticmethod
     def _parse_reflection(content: str) -> dict[str, Any]:
@@ -151,6 +196,8 @@ class PlanExecuteNodes:
             result = json.loads(content)
         except json.JSONDecodeError:
             return {"satisfied": False, "assessment": content, "parse_error": True}
-        if not isinstance(result, dict) or not isinstance(result.get("satisfied"), bool):
+        if not isinstance(result, dict) or not isinstance(
+            result.get("satisfied"), bool
+        ):
             return {"satisfied": False, "assessment": content, "parse_error": True}
         return result

@@ -107,3 +107,8 @@
 - [2026-08-12T10:58:25.469890+00:00] Updated 0 concept pages from pubmed:PMID:42571049
 - [2026-08-12T10:58:25.469890+00:00] Updated 0 concept pages from pubmed:PMID:42551944
 - [2026-08-12T10:58:25.469890+00:00] Updated 1 concept pages from pubmed:PMID:42551191
+- [2026-08-24T03:35:30.245905+00:00] Updated 1 concept pages from pubmed:PMID:42632995
+- [2026-08-24T03:35:30.256534+00:00] Updated 0 concept pages from pubmed:PMID:42629540
+- [2026-08-24T03:35:30.260591+00:00] Updated 1 concept pages from pubmed:PMID:42627360
+- [2026-08-24T03:35:30.273107+00:00] Updated 0 concept pages from pubmed:PMID:42623567
+- [2026-08-24T03:35:30.275844+00:00] Updated 0 concept pages from pubmed:PMID:42621866

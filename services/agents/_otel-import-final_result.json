@@ -1,0 +1,10 @@
+{
+  "command": [
+    "C:\\Users\\Lenovo\\Downloads\\AI-RxOS\\.venv-1\\Scripts\\python.exe",
+    "-c",
+    "import opentelemetry; from opentelemetry import trace, propagate; from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter; from opentelemetry.sdk.resources import Resource; from opentelemetry.sdk.trace import TracerProvider; from opentelemetry.sdk.trace.export import BatchSpanProcessor; from opentelemetry.trace import SpanKind; print('OTEL_IMPORT_OK'); print(getattr(opentelemetry, '__version__', 'version-not-exported'))"
+  ],
+  "returncode": 0,
+  "stdout": "OTEL_IMPORT_OK\nversion-not-exported\n",
+  "stderr": ""
+}

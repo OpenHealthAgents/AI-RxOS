@@ -18,6 +18,7 @@ class ModelConfig(BaseModel):
     temperature: float = Field(default=0.2, ge=0, le=2)
     max_tokens: int = Field(default=1024, gt=0)
     timeout_seconds: float = Field(default=30, gt=0)
+    max_retries: int = Field(default=2, ge=0, le=5)
 
 
 class ModelRegistryConfig(BaseModel):
@@ -28,23 +29,25 @@ class ModelRegistryConfig(BaseModel):
     models: dict[str, ModelConfig]
 
     @model_validator(mode="after")
-    def validate_model_references(self) -> "ModelRegistryConfig":
+    def validate_model_references(self) -> ModelRegistryConfig:
         references = [self.primary_model, *self.fallback_models]
         missing = [name for name in references if name not in self.models]
         if missing:
-            raise ValueError(f"model references are not configured: {', '.join(missing)}")
+            raise ValueError(
+                f"model references are not configured: {', '.join(missing)}"
+            )
         if len(set(references)) != len(references):
             raise ValueError("primary_model and fallback_models must be unique")
         return self
 
     @classmethod
-    def from_json(cls, value: str) -> "ModelRegistryConfig":
+    def from_json(cls, value: str) -> ModelRegistryConfig:
         try:
             payload = json.loads(value)
         except json.JSONDecodeError as exc:
             raise ValueError("model registry configuration must be valid JSON") from exc
         if not isinstance(payload, dict):
-            raise ValueError("model registry configuration must be a JSON object")
+            raise TypeError("model registry configuration must be a JSON object")
         return cls.model_validate(payload)
 
 

@@ -1,0 +1,9 @@
+{
+  "command": [
+    "C:\\Users\\Lenovo\\Downloads\\AI-RxOS\\.venv-1\\Scripts\\python.exe",
+    "_live_prereq_check.py"
+  ],
+  "returncode": 0,
+  "stdout": "LIVE_OPT_IN=False\nPAYLOAD_KEY_PRESENT=False\nPAYLOAD_KEY_VALID=False\nREDIS_URL_PRESENT=False\nREDIS_URL_VALID=False\nREDIS_REACHABLE=False\n",
+  "stderr": ""
+}

@@ -1,16 +1,17 @@
 from __future__ import annotations
 
 import json
-import time
-import inspect
 import logging
-from typing import Any
+import time
+from collections.abc import Awaitable
+from typing import Any, cast
 
 import httpx
 import redis.asyncio as redis
 
 from app.core.config import get_settings
 from app.core.security import TenantContext
+from app.security.redaction import sanitize_exception
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +23,14 @@ class LLMWikiMemoryError(RuntimeError):
 class LLMWikiMemoryAdapter:
     """Agent memory adapter using the existing LLM Wiki compile/page APIs."""
 
-    def __init__(self, base_url: str, *, api_key: str | None = None, timeout_seconds: float = 5.0, client: httpx.AsyncClient | None = None) -> None:
+    def __init__(
+        self,
+        base_url: str,
+        *,
+        api_key: str | None = None,
+        timeout_seconds: float = 5.0,
+        client: httpx.AsyncClient | None = None,
+    ) -> None:
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
         self.timeout_seconds = timeout_seconds
@@ -42,7 +50,9 @@ class LLMWikiMemoryAdapter:
         client = self.client or httpx.AsyncClient(timeout=self.timeout_seconds)
         close_client = self.client is None
         try:
-            response = await client.request(method, f"{self.base_url}{path}", headers=self._headers(), **kwargs)
+            response = await client.request(
+                method, f"{self.base_url}{path}", headers=self._headers(), **kwargs
+            )
             return response
         except httpx.HTTPError as exc:
             raise LLMWikiMemoryError(f"LLM Wiki request failed: {exc}") from exc
@@ -69,13 +79,20 @@ class LLMWikiMemoryAdapter:
                     "title": key,
                     "content": json.dumps(value),
                 },
-                "entities": [{"text": self._slug(agent_id, key), "category": "agent_memory"}],
-                "summary": {"concise_summary": json.dumps(value), "provenance": provenance or {}},
+                "entities": [
+                    {"text": self._slug(agent_id, key), "category": "agent_memory"}
+                ],
+                "summary": {
+                    "concise_summary": json.dumps(value),
+                    "provenance": provenance or {},
+                },
                 "tenant": tenant.as_dict(),
             },
         )
         if response.status_code not in (200, 201):
-            raise LLMWikiMemoryError(f"LLM Wiki rejected memory write: {response.status_code}")
+            raise LLMWikiMemoryError(
+                f"LLM Wiki rejected memory write: {response.status_code}"
+            )
         return {"status": "completed", "agent_id": agent_id, "key": key}
 
     async def retrieve(
@@ -94,7 +111,9 @@ class LLMWikiMemoryAdapter:
         if response.status_code == 404:
             return None
         if response.status_code != 200:
-            raise LLMWikiMemoryError(f"LLM Wiki rejected memory read: {response.status_code}")
+            raise LLMWikiMemoryError(
+                f"LLM Wiki rejected memory read: {response.status_code}"
+            )
         page = response.json()
         latest = page.get("latest_version") or {}
         summary = latest.get("summary") or {}
@@ -135,7 +154,10 @@ class AgentMemory:
             else:
                 logger.warning(
                     "agent_long_term_memory_disabled",
-                    extra={"event": "agent_long_term_memory_disabled", "run_id": self.run_id},
+                    extra={
+                        "event": "agent_long_term_memory_disabled",
+                        "run_id": self.run_id,
+                    },
                 )
         self.long_term = long_term
         self.ttl_seconds = ttl_seconds
@@ -176,48 +198,186 @@ class AgentMemory:
             org, workspace = self._scope(tenant)
             scoped_key = f"agent:memory:{org}:{workspace}:{agent_id}:{key}"
             index_key = f"agent:memory:index:{org}:{workspace}:{agent_id}"
-            await self.redis.set(scoped_key, json.dumps(record), ex=self.ttl_seconds)
-            await self.redis.sadd(index_key, key)
-            await self.redis.expire(index_key, self.ttl_seconds)
+            try:
+                await self.redis.set(
+                    scoped_key, json.dumps(record), ex=self.ttl_seconds
+                )
+                await cast(Awaitable[Any], self.redis.sadd(index_key, key))
+                await cast(
+                    Awaitable[Any], self.redis.expire(index_key, self.ttl_seconds)
+                )
+                record["redis_status"] = "completed"
+            except (redis.RedisError, ConnectionError, OSError) as exc:
+                logger.warning(
+                    "agent_memory_redis_unavailable",
+                    extra={
+                        "event": "agent_memory_redis_unavailable",
+                        "key": key,
+                        **sanitize_exception(exc),
+                    },
+                )
+                record["redis_status"] = "degraded"
+                record.update(sanitize_exception(exc))
         if persist_long_term:
-            record["long_term"] = await self.persist(agent_id, key, value, provenance)
+            try:
+                record["long_term"] = await self.persist(
+                    agent_id, key, value, provenance
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "agent_memory_long_term_failed",
+                    extra={
+                        "event": "agent_memory_long_term_failed",
+                        "key": key,
+                        **sanitize_exception(exc),
+                    },
+                )
+                record["long_term"] = {
+                    "status": "failed",
+                    "degraded": True,
+                        "reason": "operation failed",
+                }
         return record
 
-    async def retrieve(self, *, tenant: TenantContext, agent_id: str, key: str) -> dict[str, Any] | None:
+    async def retrieve(
+        self, *, tenant: TenantContext, agent_id: str, key: str
+    ) -> dict[str, Any] | None:
+        backend_failed = False
         if self.redis is not None:
             org, workspace = self._scope(tenant)
-            raw = await self.redis.get(f"agent:memory:{org}:{workspace}:{agent_id}:{key}")
-            if raw:
-                return json.loads(raw)
-        return await self.retrieve_long_term(agent_id, key) if self.long_term else None
+            try:
+                raw = await self.redis.get(
+                    f"agent:memory:{org}:{workspace}:{agent_id}:{key}"
+                )
+                if raw:
+                    return json.loads(raw)
+            except (redis.RedisError, ConnectionError, OSError) as exc:
+                backend_failed = True
+                logger.warning(
+                    "agent_memory_redis_read_failed",
+                    extra={
+                        "event": "agent_memory_redis_read_failed",
+                        "key": key,
+                        **sanitize_exception(exc),
+                    },
+                )
+        if self.long_term:
+            try:
+                long_term_record = await self.retrieve_long_term(agent_id, key)
+                if long_term_record:
+                    return long_term_record
+            except Exception as exc:  # noqa: BLE001
+                backend_failed = True
+                logger.warning(
+                    "agent_memory_long_term_retrieve_failed",
+                    extra={
+                        "event": "agent_memory_long_term_retrieve_failed",
+                        "key": key,
+                        **sanitize_exception(exc),
+                    },
+                )
+        if backend_failed:
+            short_val = self.recall(key)
+            if short_val is not None:
+                return {
+                    "organization_id": tenant.organization_id,
+                    "workspace_id": tenant.workspace_id,
+                    "agent_id": agent_id,
+                    "key": key,
+                    "value": short_val,
+                    "degraded": True,
+                    "source": "short_term_fallback",
+                }
+        return None
 
-    async def search(self, *, tenant: TenantContext, agent_id: str, query: str | None = None, limit: int = 10) -> list[dict[str, Any]]:
-        if self.redis is None:
-            return []
-        org, workspace = self._scope(tenant)
-        keys = await self.redis.smembers(f"agent:memory:index:{org}:{workspace}:{agent_id}")
+    async def search(
+        self,
+        *,
+        tenant: TenantContext,
+        agent_id: str,
+        query: str | None = None,
+        limit: int = 10,
+    ) -> list[dict[str, Any]]:
         records = []
-        for key in keys:
-            record = await self.retrieve(tenant=tenant, agent_id=agent_id, key=key)
-            if record and (not query or query.lower() in json.dumps(record.get("value", "")).lower()):
-                records.append(record)
-        records.sort(key=lambda record: record.get("stored_at", 0), reverse=True)
+        if self.redis is not None:
+            org, workspace = self._scope(tenant)
+            try:
+                keys = await cast(
+                    Awaitable[Any],
+                    self.redis.smembers(
+                        f"agent:memory:index:{org}:{workspace}:{agent_id}"
+                    ),
+                )
+                for key in keys:
+                    record = await self.retrieve(
+                        tenant=tenant, agent_id=agent_id, key=key
+                    )
+                    if record and (
+                        not query
+                        or query.lower() in json.dumps(record.get("value", "")).lower()
+                    ):
+                        records.append(record)
+                records.sort(
+                    key=lambda record: record.get("stored_at", 0), reverse=True
+                )
+                return records[:limit]
+            except (redis.RedisError, ConnectionError, OSError) as exc:
+                logger.warning(
+                    "agent_memory_redis_search_failed",
+                    extra={
+                        "event": "agent_memory_redis_search_failed",
+                        **sanitize_exception(exc),
+                    },
+                )
+        for k, v in self._short_term.items():
+            if not query or query.lower() in json.dumps(v).lower():
+                records.append(
+                    {
+                        "organization_id": tenant.organization_id,
+                        "workspace_id": tenant.workspace_id,
+                        "agent_id": agent_id,
+                        "key": k,
+                        "value": v,
+                        "degraded": True,
+                        "source": "short_term_fallback",
+                    }
+                )
         return records[:limit]
 
-    async def persist(self, agent_id: str, key: str, value: Any, provenance: dict[str, Any] | None = None) -> dict[str, Any]:
+    async def persist(
+        self,
+        agent_id: str,
+        key: str,
+        value: Any,
+        provenance: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         self.remember(key, value)
         if self.long_term is None:
-            return {"success": True, "status": "skipped", "reason": "LLM_WIKI_URL not configured"}
+            return {
+                "success": True,
+                "status": "skipped",
+                "reason": "LLM_WIKI_URL not configured",
+            }
         if self.tenant is None:
             return {"status": "short_term_only"}
-        return await self.long_term.store(tenant=self.tenant, agent_id=agent_id, key=key, value=value, provenance=provenance)
+        return await self.long_term.store(
+            tenant=self.tenant,
+            agent_id=agent_id,
+            key=key,
+            value=value,
+            provenance=provenance,
+        )
 
-    async def retrieve_long_term(self, agent_id: str, key: str) -> dict[str, Any] | None:
+    async def retrieve_long_term(
+        self, agent_id: str, key: str
+    ) -> dict[str, Any] | None:
         if self.long_term is None:
             return None
         if self.tenant is None:
             return None
-        return await self.long_term.retrieve(tenant=self.tenant, agent_id=agent_id, key=key)
+        return await self.long_term.retrieve(
+            tenant=self.tenant, agent_id=agent_id, key=key
+        )
 
 
 def create_agent_memory(

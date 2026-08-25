@@ -69,9 +69,10 @@ app.kubernetes.io/component: {{ .service }}
 {{/* Full image reference for a service entry, e.g. (dict "root" $ "svc" $svc). */}}
 {{- define "ai-rxos.image" -}}
 {{- $registry := .root.Values.global.imageRegistry -}}
+{{- $tag := default .svc.image.tag .root.Values.global.imageTag -}}
 {{- if $registry -}}
-{{- printf "%s/%s:%s" $registry .svc.image.repository .svc.image.tag -}}
+{{- printf "%s/%s:%s" $registry .svc.image.repository $tag -}}
 {{- else -}}
-{{- printf "%s:%s" .svc.image.repository .svc.image.tag -}}
+{{- printf "%s:%s" .svc.image.repository $tag -}}
 {{- end -}}
 {{- end -}}

@@ -57,9 +57,10 @@ jobs:
       - working-directory: ${{ matrix.service }}
         run: |
           pip install -r requirements.txt
-          pip install ruff pytest
-          ruff check app || true
-          pytest -q || true
+          pip install ruff mypy
+          ruff check app tests
+          mypy app --ignore-missing-imports
+          pytest -q
 
   docker-build:
     name: Docker — build all images
@@ -78,6 +79,13 @@ jobs:
             docker build -f "$dockerfile" -t "ai-rxos/$tag:ci" .
             echo "::endgroup::"
           done
+      - name: Verify agents image
+        run: |
+          image=ai-rxos/services-agents:ci
+          docker run --rm "$image" python -m pip check
+          docker run --rm "$image" python -c "import fastapi, langgraph, cryptography, redis, jwt, opentelemetry, opentelemetry.sdk, opentelemetry.exporter.otlp.proto.http"
+          docker run --rm "$image" python -m compileall -q app tests
+          docker run --rm "$image" python -m pytest -q
 
   helm-lint:
     name: Helm — lint chart

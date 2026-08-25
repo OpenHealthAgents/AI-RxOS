@@ -12,7 +12,9 @@ async def test_register_retrieve_by_version_and_latest():
     await registry.register("research", "Find papers about ${topic}.")
     await registry.register("research", "Review evidence about ${topic}.")
 
-    assert (await registry.retrieve("research", version=1)).template == "Find papers about ${topic}."
+    assert (
+        await registry.retrieve("research", version=1)
+    ).template == "Find papers about ${topic}."
     assert (await registry.retrieve("research")).version == 2
 
 

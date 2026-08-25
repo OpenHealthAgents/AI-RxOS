@@ -1,5 +1,5 @@
-from typing import Any
 import uuid
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -66,5 +66,7 @@ async def search_memory(
     tenant: TenantContext = tenant_dependency,
     store: AgentMemory = memory_store_dependency,
 ) -> dict[str, Any]:
-    records = await store.search(tenant=tenant, agent_id=agent_id, query=query, limit=limit)
+    records = await store.search(
+        tenant=tenant, agent_id=agent_id, query=query, limit=limit
+    )
     return {"items": records, "total": len(records)}

@@ -10,8 +10,12 @@ from app.memory.llm_wiki import AgentMemory, LLMWikiMemoryAdapter
 
 
 def test_short_term_memory_is_scoped_to_one_run():
-    first = AgentMemory("run-1", TenantContext(organization_id="org-a", workspace_id="ws-1"))
-    second = AgentMemory("run-2", TenantContext(organization_id="org-a", workspace_id="ws-1"))
+    first = AgentMemory(
+        "run-1", TenantContext(organization_id="org-a", workspace_id="ws-1")
+    )
+    second = AgentMemory(
+        "run-2", TenantContext(organization_id="org-a", workspace_id="ws-1")
+    )
     first.remember("finding", "private")
 
     assert first.recall("finding") == "private"
@@ -27,11 +31,17 @@ async def test_llm_wiki_memory_forwards_workspace_and_isolates_retrieval():
             payload = json.loads(request.content)
             tenant = payload["tenant"]
             entity = payload["entities"][0]["text"]
-            stored[(tenant.get("organization_id"), tenant.get("workspace_id"), entity)] = payload
+            stored[
+                (tenant.get("organization_id"), tenant.get("workspace_id"), entity)
+            ] = payload
             return httpx.Response(201, json={"success": True}, request=request)
 
         params = dict(request.url.params)
-        identity = (params.get("organization_id"), params.get("workspace_id"), params["slug"])
+        identity = (
+            params.get("organization_id"),
+            params.get("workspace_id"),
+            params["slug"],
+        )
         payload = stored.get(identity)
         if payload is None:
             return httpx.Response(404, request=request)
@@ -51,9 +61,19 @@ async def test_llm_wiki_memory_forwards_workspace_and_isolates_retrieval():
     tenant_a = TenantContext(organization_id="org-a", workspace_id="ws-1")
     tenant_b = TenantContext(organization_id="org-a", workspace_id="ws-2")
 
-    await adapter.store(tenant=tenant_a, agent_id="researcher", key="finding", value={"drug": "trastuzumab"})
-    assert (await adapter.retrieve(tenant=tenant_a, agent_id="researcher", key="finding"))["value"] == {"drug": "trastuzumab"}
-    assert await adapter.retrieve(tenant=tenant_b, agent_id="researcher", key="finding") is None
+    await adapter.store(
+        tenant=tenant_a,
+        agent_id="researcher",
+        key="finding",
+        value={"drug": "trastuzumab"},
+    )
+    assert (
+        await adapter.retrieve(tenant=tenant_a, agent_id="researcher", key="finding")
+    )["value"] == {"drug": "trastuzumab"}
+    assert (
+        await adapter.retrieve(tenant=tenant_b, agent_id="researcher", key="finding")
+        is None
+    )
     await client.aclose()
 
 
