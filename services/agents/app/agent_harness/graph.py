@@ -51,7 +51,7 @@ class AgentExecutionError(AIPlatformError):
 
 
 class StateGraph:
-    def __init__(self) -> None:
+    def __init__(self) -> None: 
         self._graph = OfficialStateGraph(LangGraphState)
         self._nodes: dict[str, tuple[NodeHandler, RetryPolicy]] = {}
         self._edges: dict[str, str] = {}
