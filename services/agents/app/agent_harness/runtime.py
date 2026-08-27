@@ -6,6 +6,7 @@ import os
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextvars import ContextVar
+from dataclasses import dataclass, field
 from typing import Any
 
 from app.core.observability import CostCalculator, ModelUsage, metrics, span
@@ -17,6 +18,24 @@ from app.prompt_registry.registry import PromptRegistry
 from app.security.redaction import redact_event
 from app.tool_registry.registry import ToolRegistry
 from app.tool_registry.schemas import ToolExecutionResult
+
+
+@dataclass(frozen=True)
+class ExecutionContext:
+    """Reusable execution metadata for the harness.
+
+    This separates framework metadata (agent, request, execution, conversation,
+    tenant) from run state and long-term memory so future agents can work with a
+    consistent boundary without encoding Pharma-specific assumptions.
+    """
+
+    agent_name: str | None = None
+    execution_id: str | None = None
+    request_id: str | None = None
+    correlation_id: str | None = None
+    conversation_id: str | None = None
+    tenant: TenantContext | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 class AgentRuntime:
@@ -62,6 +81,18 @@ class AgentRuntime:
         self._execution_id: ContextVar[str | None] = ContextVar(
             f"execution_id_{id(self)}", default=None
         )
+        self._parent_execution_id: ContextVar[str | None] = ContextVar(
+            f"parent_execution_id_{id(self)}", default=None
+        )
+        self._request_id: ContextVar[str | None] = ContextVar(
+            f"request_id_{id(self)}", default=None
+        )
+        self._correlation_id: ContextVar[str | None] = ContextVar(
+            f"correlation_id_{id(self)}", default=None
+        )
+        self._conversation_id: ContextVar[str | None] = ContextVar(
+            f"conversation_id_{id(self)}", default=None
+        )
 
     @property
     def memory(self) -> AgentMemory | None:
@@ -94,6 +125,88 @@ class AgentRuntime:
 
     def set_execution_id(self, execution_id: str | None) -> None:
         self._execution_id.set(execution_id)
+
+    @property
+    def parent_execution_id(self) -> str | None:
+        return self._parent_execution_id.get()
+
+    def set_parent_execution_id(self, parent_execution_id: str | None) -> None:
+        self._parent_execution_id.set(parent_execution_id)
+
+    @property
+    def request_id(self) -> str | None:
+        return self._request_id.get()
+
+    def set_request_id(self, request_id: str | None) -> None:
+        self._request_id.set(request_id)
+
+    @property
+    def correlation_id(self) -> str | None:
+        return self._correlation_id.get()
+
+    def set_correlation_id(self, correlation_id: str | None) -> None:
+        self._correlation_id.set(correlation_id)
+
+    @property
+    def conversation_id(self) -> str | None:
+        return self._conversation_id.get()
+
+    def set_conversation_id(self, conversation_id: str | None) -> None:
+        self._conversation_id.set(conversation_id)
+
+    @property
+    def execution_context(self) -> ExecutionContext:
+        metadata: dict[str, Any] = {}
+        if self.parent_execution_id is not None:
+            metadata["parent_execution_id"] = self.parent_execution_id
+        return ExecutionContext(
+            agent_name=self.agent_name,
+            execution_id=self.execution_id,
+            request_id=self.request_id,
+            correlation_id=self.correlation_id,
+            conversation_id=self.conversation_id,
+            tenant=self.current_tenant,
+            metadata=metadata,
+        )
+
+    def bind_execution_context(
+        self,
+        *,
+        execution_id: str | None = None,
+        request_id: str | None = None,
+        correlation_id: str | None = None,
+        conversation_id: str | None = None,
+        parent_execution_id: str | None = None,
+        tenant: TenantContext | None = None,
+        **metadata: Any,
+    ) -> ExecutionContext:
+        if execution_id is not None:
+            self.set_execution_id(execution_id)
+        if parent_execution_id is not None:
+            self.set_parent_execution_id(parent_execution_id)
+        elif "parent_execution_id" in metadata:
+            self.set_parent_execution_id(str(metadata["parent_execution_id"]))
+        if request_id is not None:
+            self.set_request_id(request_id)
+        if correlation_id is not None:
+            self.set_correlation_id(correlation_id)
+        if conversation_id is not None:
+            self.set_conversation_id(conversation_id)
+        if tenant is not None:
+            self._tenant.set(tenant)
+        final_metadata = dict(metadata)
+        if self.parent_execution_id is not None:
+            final_metadata["parent_execution_id"] = self.parent_execution_id
+        context = ExecutionContext(
+            agent_name=self.agent_name,
+            execution_id=self.execution_id,
+            request_id=self.request_id,
+            correlation_id=self.correlation_id,
+            conversation_id=self.conversation_id,
+            tenant=self.current_tenant,
+            metadata=final_metadata,
+        )
+        return context
 
     @property
     def current_tenant(self) -> TenantContext | None:

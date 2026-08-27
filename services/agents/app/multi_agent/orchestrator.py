@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import logging
+import uuid
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
@@ -25,6 +26,8 @@ class AgentSpec:
     name: str
     handler: AgentHandler
     retry: RetryPolicy = field(default_factory=RetryPolicy)
+    allowed_parents: frozenset[str] | None = None
+    description: str | None = None
 
 
 class MultiAgentOrchestrator:
@@ -43,6 +46,99 @@ class MultiAgentOrchestrator:
             raise ValueError("agent names must be unique")
         self._supervisor = supervisor
         self._checkpoints = checkpoint_store
+
+    def register_agent(
+        self,
+        name: str,
+        handler: AgentHandler,
+        *,
+        retry: RetryPolicy | None = None,
+        allowed_parents: Sequence[str] | None = None,
+        description: str | None = None,
+    ) -> AgentSpec:
+        if name in self._agents:
+            raise ValueError(f"agent already registered: {name}")
+        spec = AgentSpec(
+            name=name,
+            handler=handler,
+            retry=retry or RetryPolicy(),
+            allowed_parents=(
+                frozenset(allowed_parents) if allowed_parents is not None else None
+            ),
+            description=description,
+        )
+        self._agents[name] = spec
+        return spec
+
+    def resolve_agent(self, name: str) -> AgentSpec:
+        try:
+            return self._agents[name]
+        except KeyError as exc:
+            raise KeyError(f"agent not registered: {name}") from exc
+
+    def get_agent(self, name: str) -> AgentSpec:
+        return self.resolve_agent(name)
+
+    async def invoke_agent(
+        self,
+        runtime: AgentRuntime,
+        name: str,
+        *,
+        state: AgentState | None = None,
+        parent_agent_name: str | None = None,
+        parent_execution_id: str | None = None,
+        execution_id: str | None = None,
+        **metadata: Any,
+    ) -> Any:
+        spec = self.resolve_agent(name)
+        parent_name = parent_agent_name or runtime.agent_name
+        if (
+            spec.allowed_parents is not None
+            and parent_name is not None
+            and parent_name not in spec.allowed_parents
+        ):
+            raise PermissionError(
+                f"agent '{name}' is not allowed to be invoked by '{parent_name}'"
+            )
+
+        if state is None:
+            state = AgentState(run_id=f"agent-{uuid.uuid4().hex[:8]}")
+
+        previous_agent_name = runtime.agent_name
+        previous_execution_id = runtime.execution_id
+        previous_parent_execution_id = runtime.parent_execution_id
+        previous_request_id = runtime.request_id
+        previous_correlation_id = runtime.correlation_id
+        previous_conversation_id = runtime.conversation_id
+        previous_tenant = runtime.current_tenant
+
+        child_execution_id = execution_id or f"{runtime.execution_id or 'exec'}-{name}-{uuid.uuid4().hex[:8]}"
+        child_parent_execution_id = parent_execution_id or runtime.execution_id
+        runtime.set_agent_name(name)
+        runtime.bind_execution_context(
+            execution_id=child_execution_id,
+            request_id=runtime.request_id,
+            correlation_id=runtime.correlation_id,
+            conversation_id=runtime.conversation_id,
+            parent_execution_id=child_parent_execution_id,
+            tenant=runtime.current_tenant,
+            parent_agent_name=parent_name,
+            **metadata,
+        )
+        try:
+            result = spec.handler(state, runtime)
+            if inspect.isawaitable(result):
+                result = await result
+            return result
+        finally:
+            runtime.set_agent_name(previous_agent_name)
+            runtime.set_execution_id(previous_execution_id)
+            runtime.set_parent_execution_id(previous_parent_execution_id)
+            runtime.set_request_id(previous_request_id)
+            runtime.set_correlation_id(previous_correlation_id)
+            runtime.set_conversation_id(previous_conversation_id)
+            if previous_tenant is not None:
+                runtime._tenant.set(previous_tenant)
 
     def _build_graph(self) -> AgentGraph:
         graph = StateGraph()

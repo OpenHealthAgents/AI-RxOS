@@ -171,11 +171,13 @@ def test_task_status_is_hidden_from_another_tenant(monkeypatch):
     assert response.status_code == 404
 
 
+from fastapi import HTTPException
+
+from app import main
+
+
 @pytest.mark.asyncio
 async def test_agent_rate_limit_rejects_requests_over_limit(monkeypatch):
-    from fastapi import HTTPException
-    from app import main
-
     class FakeRedis:
         def __init__(self):
             self.values = {}

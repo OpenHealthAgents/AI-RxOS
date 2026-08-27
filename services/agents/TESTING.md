@@ -24,7 +24,7 @@ python -m compileall -q app
 
 Latest verified results from the `services/agents` directory:
 
-- **Full test suite:** PASS, 91 passed and 0 failed.
+- **Full test suite:** PASS, 94 passed and 0 failed.
 - **Skipped tests:** PASS, 7 intentional opt-in live tests; no core Prompt 9
 	tests are skipped unexpectedly.
 - **Ruff:** PASS, `ruff check app`.
@@ -46,7 +46,7 @@ The latest Docker verification completed successfully:
 	`GET http://localhost:8085/healthz` returned `{"status":"ok","service":"agents"}`.
 - **Worker container:** freshly recreated and running as non-root user `app`.
 - **Redis:** running and healthy according to the Compose health check.
-- **Docker test suite:** 91 passed, 7 intentional live-test skips.
+- **Docker test suite:** 94 passed, 7 intentional live-test skips.
 - **Container `pip check`:** passed with `No broken requirements found`.
 
 The container emitted only known pytest-asyncio and LangGraph deprecation
@@ -87,7 +87,7 @@ consumer group with stale-message reclaim. Automatic retries are bounded by
 The latest local run from this directory was:
 
 ```text
-91 passed, 7 skipped, 0 failed
+94 passed, 7 skipped, 0 failed
 ```
 
 The skipped tests are opt-in live tests requiring Redis, an MCP server, or

@@ -152,10 +152,21 @@ python -m app.jobs.worker
 
 ### Running Tests
 
-Execute pytest from inside the `services/agents` directory:
+The repository root is not the correct pytest entry point for the Python
+services. Run the agents suite from inside `services/agents` and set
+`PYTHONPATH` to the service root so imports resolve correctly:
 
 ```bash
-python -m pytest
+cd services/agents
+PYTHONPATH=. python -m pytest -q
+```
+
+PowerShell:
+
+```powershell
+cd services/agents
+$env:PYTHONPATH = "."
+python -m pytest -q
 ```
 
 ### Code Tests
@@ -164,7 +175,7 @@ Latest verified results from this directory:
 
 | Check | Result |
 | :--- | :--- |
-| Full test suite | **PASS**: 91 passed, 0 failed |
+| Full test suite | **PASS**: 94 passed, 0 failed |
 | Skipped tests | **PASS**: 7 intentional opt-in live tests; no core tests skipped unexpectedly |
 | Ruff | **PASS**: `ruff check app` |
 | mypy | **PASS**: `mypy app --ignore-missing-imports` with no issues in 42 files |
@@ -184,7 +195,7 @@ Latest verified Docker results:
 | Agents container | **PASS**: starts as non-root user `app`; `/healthz` returns 200 |
 | Worker container | **PASS**: starts as non-root user `app` with `python -m app.jobs.worker` |
 | Redis container | **PASS**: Compose health check reports `healthy` |
-| Docker test suite | **PASS**: 91 passed, 7 intentional live-test skips |
+| Docker test suite | **PASS**: 94 passed, 7 intentional live-test skips |
 | Container `pip check` | **PASS**: no broken requirements |
 
 The test and service logs contain only the known pytest-asyncio and LangGraph

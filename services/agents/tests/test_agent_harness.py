@@ -5,6 +5,7 @@ import pytest
 from app.agent_harness import (
     AgentRuntime,
     AgentState,
+    ExecutionContext,
     InMemoryCheckpointStore,
     RetryPolicy,
     StateGraph,
@@ -24,6 +25,45 @@ class FakeModels:
             provider="openai",
             content=request.messages[0]["content"],
         )
+
+
+def test_agent_runtime_tracks_request_correlation_and_conversation_context():
+    runtime = AgentRuntime(
+        models=object(),
+        prompts=PromptRegistry(InMemoryPromptStore()),
+        tools=ToolRegistry(),
+        tenant=TenantContext(organization_id="org-tenant", user_id="user-1"),
+    )
+
+    runtime.set_agent_name("triage")
+    runtime.set_execution_id("exec-123")
+    runtime.set_request_id("req-456")
+    runtime.set_correlation_id("corr-789")
+    runtime.set_conversation_id("conv-abc")
+
+    context = runtime.execution_context
+
+    assert isinstance(context, ExecutionContext)
+    assert context.agent_name == "triage"
+    assert context.execution_id == "exec-123"
+    assert context.request_id == "req-456"
+    assert context.correlation_id == "corr-789"
+    assert context.conversation_id == "conv-abc"
+    assert context.tenant is not None
+    assert context.tenant.organization_id == "org-tenant"
+
+    bound = runtime.bind_execution_context(
+        request_id="req-999",
+        correlation_id="corr-000",
+        conversation_id="conv-zzz",
+        tenant=TenantContext(organization_id="org-bound", user_id="user-2"),
+        step="load-patient",
+    )
+    assert bound.request_id == "req-999"
+    assert bound.correlation_id == "corr-000"
+    assert bound.conversation_id == "conv-zzz"
+    assert bound.tenant is not None and bound.tenant.organization_id == "org-bound"
+    assert bound.metadata["step"] == "load-patient"
 
 
 @pytest.mark.asyncio

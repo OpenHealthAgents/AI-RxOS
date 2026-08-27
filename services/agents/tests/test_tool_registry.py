@@ -15,7 +15,12 @@ from app.agent_harness import (
     StateGraph,
 )
 from app.core.security import TenantContext
-from app.tool_registry import MCPClient, SchemaValidationError, ToolRegistry
+from app.tool_registry import (
+    MCPClient,
+    SchemaValidationError,
+    ToolExecutionContext,
+    ToolRegistry,
+)
 
 TEST_TENANT = TenantContext(organization_id="org-test", user_id="user-test")
 
@@ -54,6 +59,32 @@ async def test_register_executes_async_handler_and_validates_input_output():
         await registry.execute(
             "double", {"value": "4"}, agent_name="default", tenant=TEST_TENANT
         )
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_accepts_reusable_execution_context():
+    registry = ToolRegistry()
+    registry.register(
+        "echo",
+        OBJECT_SCHEMA,
+        lambda arguments: {"reply": arguments["value"]},
+        output_schema={"type": "object", "properties": {"reply": {"type": "integer"}}, "required": ["reply"]},
+    )
+
+    result = await registry.execute(
+        "echo",
+        {"value": 7},
+        context=ToolExecutionContext(
+            tool_name="echo",
+            agent_name="default",
+            tenant=TEST_TENANT,
+            execution_id="exec-123",
+            correlation_id="corr-456",
+            request_id="req-789",
+        ),
+    )
+
+    assert result.result == {"reply": 7}
 
 
 @pytest.mark.asyncio

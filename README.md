@@ -85,6 +85,16 @@ To run Python tests together from a shell that supports Make:
 make test-python
 ```
 
+For the agents service, the validated command is:
+
+```bash
+cd services/agents
+$env:PYTHONPATH = "."
+python -m pytest -q
+```
+
+This service-level run is currently green: `94 passed, 7 skipped, 0 failed`.
+
 Or run a service directly from its own directory, for example:
 
 ```bash

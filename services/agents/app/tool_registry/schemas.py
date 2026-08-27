@@ -2,14 +2,37 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 from contextvars import ContextVar
+from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
+
+from app.core.security import TenantContext
 
 ToolHandler = Callable[[dict[str, Any]], Any | Awaitable[Any]]
 current_execution_id: ContextVar[str | None] = ContextVar(
     "tool_execution_id", default=None
 )
+
+
+@dataclass(frozen=True)
+class ToolExecutionContext:
+    """Reusable framework context for tool execution within a runtime.
+
+    This keeps the execution boundary explicit without forcing the rest of the
+    agent platform to change its public API or production behaviors.
+    """
+
+    tool_name: str
+    agent_name: str | None = None
+    tenant: TenantContext | None = None
+    execution_key: str | None = None
+    execution_id: str | None = None
+    request_id: str | None = None
+    correlation_id: str | None = None
+    workspace_id: str | None = None
+    project_id: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 class ToolDefinition(BaseModel):

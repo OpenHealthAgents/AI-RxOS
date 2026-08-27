@@ -5,6 +5,7 @@ import asyncio
 import pytest
 
 from app.agent_harness import AgentRuntime, AgentState, InMemoryCheckpointStore
+from app.core.security import TenantContext
 from app.multi_agent import (
     AgentOutcome,
     AgentSpec,
@@ -22,6 +23,62 @@ def runtime():
     return AgentRuntime(
         models=EmptyRuntime(), prompts=EmptyRuntime(), tools=EmptyRuntime()
     )
+
+
+@pytest.mark.asyncio
+async def test_registry_supports_parent_child_invocation_with_isolated_execution_context():
+    orchestrator = MultiAgentOrchestrator(
+        [AgentSpec("parent", lambda _state, _runtime: {"ready": True})],
+        lambda _state: "__end__",
+        InMemoryCheckpointStore(),
+    )
+
+    async def child(_state, runtime):
+        assert runtime.execution_id is not None
+        assert runtime.execution_id != "exec-parent"
+        assert runtime.parent_execution_id == "exec-parent"
+        assert runtime.request_id == "req-123"
+        assert runtime.correlation_id == "corr-456"
+        assert runtime.conversation_id == "conv-789"
+        assert runtime.current_tenant is not None
+        assert runtime.current_tenant.organization_id == "org-42"
+        return {"child": "completed"}
+
+    orchestrator.register_agent("child", child, allowed_parents=["parent"])
+
+    runtime = AgentRuntime(
+        models=EmptyRuntime(),
+        prompts=EmptyRuntime(),
+        tools=EmptyRuntime(),
+        tenant=TenantContext(organization_id="org-42", user_id="user-1"),
+    )
+    runtime.set_agent_name("parent")
+    runtime.set_execution_id("exec-parent")
+    runtime.set_request_id("req-123")
+    runtime.set_correlation_id("corr-456")
+    runtime.set_conversation_id("conv-789")
+
+    result = await orchestrator.invoke_agent(
+        runtime,
+        "child",
+        state=AgentState(run_id="child-run"),
+        parent_agent_name="parent",
+        parent_execution_id="exec-parent",
+    )
+
+    assert result == {"child": "completed"}
+    assert runtime.agent_name == "parent"
+    assert runtime.execution_id == "exec-parent"
+    assert runtime.parent_execution_id is None
+
+    with pytest.raises(PermissionError):
+        await orchestrator.invoke_agent(
+            runtime,
+            "child",
+            state=AgentState(run_id="blocked-run"),
+            parent_agent_name="unauthorized-parent",
+            parent_execution_id="exec-other",
+        )
 
 
 @pytest.mark.asyncio
