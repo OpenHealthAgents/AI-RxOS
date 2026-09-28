@@ -1,0 +1,142 @@
+I001 [*] Import block is un-sorted or un-formatted
+  --> app\core\observability.py:1:1
+   |
+ 1 | / from __future__ import annotations
+ 2 | |
+ 3 | | import json
+ 4 | | import importlib
+ 5 | | import uuid
+ 6 | | from collections.abc import Iterator
+ 7 | | from contextlib import contextmanager
+ 8 | | from contextvars import ContextVar
+ 9 | | from dataclasses import dataclass
+10 | | from typing import Any
+   | |______________________^
+11 |
+12 |   otel_propagate: Any = None
+   |
+help: Organize imports
+  |
+2 |
+3 + import importlib
+4 | import json
+  - import importlib
+5 | import uuid
+  |
+
+B009 [*] Do not call `getattr` with a constant attribute value. It is not any safer than normal property access.
+  --> app\core\observability.py:23:24
+   |
+21 |       otel_propagate = importlib.import_module("opentelemetry.propagate")
+22 |       otel_trace = importlib.import_module("opentelemetry.trace")
+23 |       OtelSpanExporter = getattr(
+   |  ________________________^
+24 | |         importlib.import_module(
+25 | |             "opentelemetry.exporter.otlp.proto.http.trace_exporter"
+26 | |         ),
+27 | |         "OTLPSpanExporter",
+28 | |     )
+   | |_____^
+29 |       OtelResource = getattr(importlib.import_module("opentelemetry.sdk.resources"), "Resource")
+30 |       OtelTracerProvider = getattr(
+   |
+help: Replace `getattr` with attribute access
+   |
+22 |     otel_trace = importlib.import_module("opentelemetry.trace")
+   -     OtelSpanExporter = getattr(
+   -         importlib.import_module(
+23 +     OtelSpanExporter = (importlib.import_module(
+24 |             "opentelemetry.exporter.otlp.proto.http.trace_exporter"
+   -         ),
+   -         "OTLPSpanExporter",
+   -     )
+25 +         )).OTLPSpanExporter
+26 |     OtelResource = getattr(importlib.import_module("opentelemetry.sdk.resources"), "Resource")
+   |
+
+B009 [*] Do not call `getattr` with a constant attribute value. It is not any safer than normal property access.
+  --> app\core\observability.py:29:20
+   |
+27 |         "OTLPSpanExporter",
+28 |     )
+29 |     OtelResource = getattr(importlib.import_module("opentelemetry.sdk.resources"), "Resource")
+   |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+30 |     OtelTracerProvider = getattr(
+31 |         importlib.import_module("opentelemetry.sdk.trace"), "TracerProvider"
+   |
+help: Replace `getattr` with attribute access
+   |
+28 |     )
+   -     OtelResource = getattr(importlib.import_module("opentelemetry.sdk.resources"), "Resource")
+29 +     OtelResource = importlib.import_module("opentelemetry.sdk.resources").Resource
+30 |     OtelTracerProvider = getattr(
+   |
+
+B009 [*] Do not call `getattr` with a constant attribute value. It is not any safer than normal property access.
+  --> app\core\observability.py:30:26
+   |
+28 |       )
+29 |       OtelResource = getattr(importlib.import_module("opentelemetry.sdk.resources"), "Resource")
+30 |       OtelTracerProvider = getattr(
+   |  __________________________^
+31 | |         importlib.import_module("opentelemetry.sdk.trace"), "TracerProvider"
+32 | |     )
+   | |_____^
+33 |       OtelBatchSpanProcessor = getattr(
+34 |           importlib.import_module("opentelemetry.sdk.trace.export"),
+   |
+help: Replace `getattr` with attribute access
+   |
+29 |     OtelResource = getattr(importlib.import_module("opentelemetry.sdk.resources"), "Resource")
+   -     OtelTracerProvider = getattr(
+   -         importlib.import_module("opentelemetry.sdk.trace"), "TracerProvider"
+   -     )
+30 +     OtelTracerProvider = importlib.import_module("opentelemetry.sdk.trace").TracerProvider
+31 |     OtelBatchSpanProcessor = getattr(
+   |
+
+B009 [*] Do not call `getattr` with a constant attribute value. It is not any safer than normal property access.
+  --> app\core\observability.py:33:30
+   |
+31 |           importlib.import_module("opentelemetry.sdk.trace"), "TracerProvider"
+32 |       )
+33 |       OtelBatchSpanProcessor = getattr(
+   |  ______________________________^
+34 | |         importlib.import_module("opentelemetry.sdk.trace.export"),
+35 | |         "BatchSpanProcessor",
+36 | |     )
+   | |_____^
+37 |       OtelSpanKind = getattr(otel_trace, "SpanKind")
+38 |   except ImportError:  # pragma: no cover
+   |
+help: Replace `getattr` with attribute access
+   |
+32 |     )
+   -     OtelBatchSpanProcessor = getattr(
+   -         importlib.import_module("opentelemetry.sdk.trace.export"),
+   -         "BatchSpanProcessor",
+   -     )
+33 +     OtelBatchSpanProcessor = importlib.import_module("opentelemetry.sdk.trace.export").BatchSpanProcessor
+34 |     OtelSpanKind = getattr(otel_trace, "SpanKind")
+   |
+
+B009 [*] Do not call `getattr` with a constant attribute value. It is not any safer than normal property access.
+  --> app\core\observability.py:37:20
+   |
+35 |         "BatchSpanProcessor",
+36 |     )
+37 |     OtelSpanKind = getattr(otel_trace, "SpanKind")
+   |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+38 | except ImportError:  # pragma: no cover
+39 |     pass
+   |
+help: Replace `getattr` with attribute access
+   |
+36 |     )
+   -     OtelSpanKind = getattr(otel_trace, "SpanKind")
+37 +     OtelSpanKind = otel_trace.SpanKind
+38 | except ImportError:  # pragma: no cover
+   |
+
+Found 6 errors.
+[*] 6 fixable with the `--fix` option.

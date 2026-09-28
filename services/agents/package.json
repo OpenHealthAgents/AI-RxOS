@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "uvicorn app.main:app --reload --port 8085",
+    "worker": "python -m app.jobs.worker",
     "build": "python -m compileall app",
     "lint": "ruff check app",
     "test": "pytest -q",

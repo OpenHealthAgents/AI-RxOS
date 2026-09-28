@@ -41,6 +41,10 @@ spec:
             {{- toYaml $root.Values.securityContext | nindent 12 }}
           image: {{ include "ai-rxos.image" (dict "root" $root "svc" $svc) }}
           imagePullPolicy: {{ $root.Values.global.imagePullPolicy }}
+          {{- with $svc.command }}
+          command:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           ports:
             - name: http
               containerPort: {{ $svc.port }}

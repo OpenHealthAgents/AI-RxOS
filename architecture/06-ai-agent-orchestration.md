@@ -1,5 +1,27 @@
 # AI Agent Orchestration Architecture - AI-RxOS
 
+> **Implementation note (Prompt 9):** The current implementation is in
+> `services/agents`. It uses a custom `StateGraph`/`AgentGraph` runtime and an
+> MCP client; it does not install the external LangGraph package, OpenAI
+> Agents SDK, or expose the illustrative MCP server shown later in this
+> document. The code-backed behavior takes precedence over the conceptual
+> examples below.
+
+The current Prompt 9 service also uses Redis Streams for durable asynchronous
+jobs, consumer-group recovery, tenant-scoped idempotency keys, bounded worker
+retries, and opaque request/correlation IDs. `AuthorizationService` applies
+deny-by-default agent and tool policies from authenticated JWT context. The
+repository does not currently expose a separate Better Auth permission API or
+OpenTelemetry exporter for this service.
+
+> **Implementation note (Prompt 9):** The current implementation is in
+> `services/agents`. It uses a custom `StateGraph`/`AgentGraph` runtime and an
+> MCP client; it does not install the external LangGraph package, OpenAI
+> Agents SDK, or expose the illustrative MCP server shown later in this
+> document. The code-backed behavior takes precedence over the conceptual
+> examples below.
+# AI Agent Orchestration Architecture - AI-RxOS
+
 ## Overview
 AI-RxOS uses a multi-agent orchestration system based on the Model Context Protocol (MCP) and OpenAI Agents SDK. Agents are autonomous AI entities that use tools to accomplish tasks, coordinate with other agents, and maintain conversation context.
 

@@ -1,0 +1,10 @@
+{
+  "command": [
+    "C:\\Users\\Lenovo\\Downloads\\AI-RxOS\\.venv-1\\Scripts\\python.exe",
+    "-c",
+    "import opentelemetry; from opentelemetry import trace; from opentelemetry.sdk.trace import TracerProvider; print('OTEL_IMPORT_OK')"
+  ],
+  "returncode": 1,
+  "stdout": "",
+  "stderr": "Traceback (most recent call last):\n  File \"<string>\", line 1, in <module>\nModuleNotFoundError: No module named 'opentelemetry'\n"
+}

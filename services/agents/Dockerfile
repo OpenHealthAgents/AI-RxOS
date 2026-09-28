@@ -16,6 +16,9 @@ RUN pip install \
 FROM deps AS runtime
 
 COPY services/agents .
+RUN addgroup --system app && adduser --system --ingroup app app \
+    && chown -R app:app /app
+USER app
 
 EXPOSE 8085
 

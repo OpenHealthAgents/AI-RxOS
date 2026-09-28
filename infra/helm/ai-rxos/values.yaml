@@ -109,6 +109,13 @@ config:
   neo4jUri: "bolt://ai-rxos-neo4j:7687"
   neo4jUser: neo4j
   redisUrl: "redis://ai-rxos-redis-master:6379/0"
+  redisTlsRequired: false
+  executionPayloadTtl: 86400
+  checkpointTtl: 86400
+  metadataTtl: 86400
+  idempotencyTtl: 86400
+  jwtIssuer: ""
+  jwtAudience: ""
   opensearchUrl: "http://ai-rxos-opensearch-cluster-master:9200"
   opensearchUser: admin
   corsAllowOrigin: "https://app.ai-rxos.local"
@@ -138,6 +145,7 @@ secrets:
   redisPassword: ""
   opensearchPassword: AiRxOS#Search9K
   jwtSecret: change_this_dev_secret_before_deploying
+  executionPayloadKey: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
   # services/auth-adapter (BetterAuth scaffold) — see
   # services/auth-adapter/README.md.
   betterAuthSecret: change_this_dev_secret_before_deploying
@@ -260,6 +268,18 @@ services:
       requests: { cpu: 250m, memory: 512Mi }
       limits: { cpu: 1000m, memory: 1Gi }
     autoscaling: { enabled: true, minReplicas: 2, maxReplicas: 8, targetCPUUtilizationPercentage: 70 }
+
+  agents-worker:
+    enabled: false
+    image: { repository: agents, tag: latest }
+    port: 8085
+    replicas: 1
+    healthPath: ""
+    command: ["python", "-m", "app.jobs.worker"]
+    resources:
+      requests: { cpu: 100m, memory: 256Mi }
+      limits: { cpu: 500m, memory: 512Mi }
+    autoscaling: { enabled: false }
 
   workflows:
     enabled: true

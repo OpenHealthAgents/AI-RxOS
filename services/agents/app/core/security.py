@@ -10,6 +10,7 @@ the canonical {sub, organizationId, roles} claim shape this aligns with.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 import jwt
 from fastapi import Depends, HTTPException, Security, status
@@ -27,6 +28,8 @@ class TenantContext:
     workspace_id: str | None = None
     project_id: str | None = None
     user_id: str | None = None
+    roles: frozenset[str] = frozenset()
+    permissions: frozenset[str] = frozenset()
 
     def as_dict(self) -> dict[str, str]:
         return {
@@ -40,11 +43,15 @@ class TenantContext:
             if v
         }
 
+    def has_permission(self, permission: str) -> bool:
+        return permission in self.permissions
+
 
 def get_current_user(
     credentials: HTTPAuthorizationCredentials | None = security_dependency,
-) -> dict[str, str]:
+) -> dict[str, Any]:
     settings = get_settings()
+    production = settings.environment.lower() in {"production", "prod"}
     if settings.environment == "test" and credentials is None:
         return {"sub": "test-user-fallback"}
 
@@ -56,7 +63,16 @@ def get_current_user(
 
     try:
         payload = jwt.decode(
-            credentials.credentials, settings.jwt_secret, algorithms=["HS256"]
+            credentials.credentials,
+            settings.jwt_secret,
+            algorithms=["HS256"],
+            issuer=settings.jwt_issuer if production else None,
+            audience=settings.jwt_audience if production else None,
+            options={
+                "require": ["exp", "iss", "aud"]
+                if production
+                else []
+            },
         )
     except jwt.PyJWTError as exc:
         raise HTTPException(
@@ -76,7 +92,7 @@ current_user_dependency = Depends(get_current_user)
 
 
 def get_tenant_context(
-    auth_payload: dict[str, str] = current_user_dependency,
+    auth_payload: dict[str, Any] = current_user_dependency,
 ) -> TenantContext:
     """Derive the caller's organization/workspace/project scope from the JWT.
 
@@ -85,6 +101,13 @@ def get_tenant_context(
     workspace_id in a request body and have it override this, or one
     tenant could read another's agent/conversation memory.
     """
+
+    def claim_set(name: str) -> frozenset[str]:
+        value: Any = auth_payload.get(name, [])
+        if isinstance(value, str):
+            return frozenset(item.strip() for item in value.split(",") if item.strip())
+        return frozenset(value)
+
     return TenantContext(
         organization_id=auth_payload.get("organization_id")
         or auth_payload.get("organizationId"),
@@ -92,4 +115,57 @@ def get_tenant_context(
         or auth_payload.get("workspaceId"),
         project_id=auth_payload.get("project_id") or auth_payload.get("projectId"),
         user_id=auth_payload.get("user_id") or auth_payload.get("sub"),
+        roles=claim_set("roles"),
+        permissions=claim_set("permissions"),
     )
+
+
+class AuthorizationService:
+    """Central authorization policy for agent, tool, and tenant resources."""
+
+    def can_execute_agent(
+        self,
+        tenant: TenantContext,
+        agent_name: str,
+        allowed_agents: set[str] | frozenset[str],
+    ) -> bool:
+        return bool(
+            tenant.user_id and tenant.organization_id and agent_name in allowed_agents
+        )
+
+    def can_execute_tool(
+        self,
+        tenant: TenantContext,
+        agent_name: str | None,
+        allowed_agents: frozenset[str],
+        required_permissions: frozenset[str],
+    ) -> bool:
+        return bool(
+            tenant.user_id
+            and tenant.organization_id
+            and agent_name
+            and (not allowed_agents or agent_name in allowed_agents)
+            and required_permissions.issubset(tenant.permissions)
+        )
+
+    def can_access_job(self, tenant: TenantContext, job_tenant: dict[str, str]) -> bool:
+        return bool(tenant.user_id and tenant.as_dict() == job_tenant)
+
+    def can_access_conversation(
+        self, tenant: TenantContext, owner: dict[str, str]
+    ) -> bool:
+        return bool(tenant.user_id and tenant.as_dict() == owner)
+
+    def can_access_memory(self, tenant: TenantContext, owner: dict[str, str]) -> bool:
+        return bool(tenant.user_id and tenant.as_dict() == owner)
+
+    def can_replay_job(self, tenant: TenantContext, owner: dict[str, str]) -> bool:
+        return bool(
+            tenant.user_id
+            and tenant.as_dict() == owner
+            and (
+                "agents:dlq:replay" in tenant.permissions
+                or "operator" in tenant.roles
+                or "admin" in tenant.roles
+            )
+        )

@@ -3,8 +3,10 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
+from app.core.errors import ServiceDegradedError
 from app.core.security import TenantContext, get_tenant_context
-from app.memory.store import ConversationMemoryStore
+from app.memory.conversation import ConversationMemoryStore
+from app.security.redaction import sanitize_exception
 
 router = APIRouter(prefix="/api/v1/agents/conversations", tags=["Conversation Memory"])
 
@@ -33,13 +35,23 @@ async def add_message(
     tenant: TenantContext = tenant_dependency,
     store: ConversationMemoryStore = conversation_store_dependency,
 ) -> dict[str, Any]:
-    record = await store.add_message(
-        tenant=tenant,
-        conversation_id=conversation_id,
-        role=req.role,
-        content=req.content,
-        metadata=req.metadata,
-    )
+    try:
+        record = await store.add_message(
+            tenant=tenant,
+            conversation_id=conversation_id,
+            role=req.role,
+            content=req.content,
+            metadata=req.metadata,
+        )
+    except ServiceDegradedError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                **sanitize_exception(exc),
+                "service": exc.details.get("service"),
+                "degraded": True,
+            },
+        ) from exc
     if record is None:
         # Conversation exists but belongs to a different tenant — reported
         # as not-found rather than forbidden, so probing conversation ids
@@ -55,7 +67,23 @@ async def get_messages(
     tenant: TenantContext = tenant_dependency,
     store: ConversationMemoryStore = conversation_store_dependency,
 ) -> dict[str, Any]:
-    messages = await store.get_messages(tenant=tenant, conversation_id=conversation_id, limit=limit)
+    try:
+        messages = await store.get_messages(
+            tenant=tenant, conversation_id=conversation_id, limit=limit
+        )
+    except ServiceDegradedError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                **sanitize_exception(exc),
+                "service": exc.details.get("service"),
+                "degraded": True,
+            },
+        ) from exc
     if messages is None:
         raise HTTPException(status_code=404, detail="conversation not found")
-    return {"conversation_id": conversation_id, "messages": messages, "total": len(messages)}
+    return {
+        "conversation_id": conversation_id,
+        "messages": messages,
+        "total": len(messages),
+    }

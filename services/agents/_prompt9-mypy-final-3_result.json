@@ -1,0 +1,10 @@
+{
+  "command": [
+    "C:\\Users\\Lenovo\\Downloads\\AI-RxOS\\.venv-1\\Scripts\\mypy.exe",
+    "app",
+    "--ignore-missing-imports"
+  ],
+  "returncode": 0,
+  "stdout": "Success: no issues found in 42 source files\n",
+  "stderr": ""
+}

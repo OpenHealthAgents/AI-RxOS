@@ -7,6 +7,10 @@ metadata:
     {{- include "ai-rxos.labels" . | nindent 4 }}
 data:
   ENVIRONMENT: {{ .Values.global.environment | quote }}
+  EXECUTION_PAYLOAD_TTL: {{ .Values.config.executionPayloadTtl | quote }}
+  CHECKPOINT_TTL: {{ .Values.config.checkpointTtl | quote }}
+  METADATA_TTL: {{ .Values.config.metadataTtl | quote }}
+  IDEMPOTENCY_TTL: {{ .Values.config.idempotencyTtl | quote }}
   POSTGRES_HOST: {{ .Values.config.postgresHost | quote }}
   POSTGRES_PORT: {{ .Values.config.postgresPort | quote }}
   POSTGRES_DB: {{ .Values.config.postgresDb | quote }}
@@ -14,6 +18,9 @@ data:
   NEO4J_URI: {{ .Values.config.neo4jUri | quote }}
   NEO4J_USER: {{ .Values.config.neo4jUser | quote }}
   REDIS_URL: {{ .Values.config.redisUrl | quote }}
+  REDIS_TLS_REQUIRED: {{ .Values.config.redisTlsRequired | quote }}
+  JWT_ISSUER: {{ .Values.config.jwtIssuer | quote }}
+  JWT_AUDIENCE: {{ .Values.config.jwtAudience | quote }}
   OPENSEARCH_URL: {{ .Values.config.opensearchUrl | quote }}
   OPENSEARCH_USER: {{ .Values.config.opensearchUser | quote }}
   CORS_ALLOW_ORIGIN: {{ .Values.config.corsAllowOrigin | quote }}

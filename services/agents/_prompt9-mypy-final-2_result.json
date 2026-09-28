@@ -1,0 +1,10 @@
+{
+  "command": [
+    "C:\\Users\\Lenovo\\Downloads\\AI-RxOS\\.venv-1\\Scripts\\mypy.exe",
+    "app",
+    "--ignore-missing-imports"
+  ],
+  "returncode": 1,
+  "stdout": "app\\core\\observability.py:23: error: Name \"otel_propagate\" already defined (by an import)  [no-redef]\napp\\core\\observability.py:24: error: Name \"otel_trace\" already defined (by an import)  [no-redef]\napp\\core\\observability.py:25: error: Name \"OtelResource\" already defined (possibly by an import)  [no-redef]\napp\\core\\observability.py:26: error: Name \"OtelTracerProvider\" already defined (possibly by an import)  [no-redef]\napp\\core\\observability.py:27: error: Name \"OtelBatchSpanProcessor\" already defined (possibly by an import)  [no-redef]\napp\\core\\observability.py:28: error: Name \"OtelSpanExporter\" already defined (possibly by an import)  [no-redef]\napp\\core\\observability.py:29: error: Name \"OtelSpanKind\" already defined (possibly by an import)  [no-redef]\nFound 7 errors in 1 file (checked 42 source files)\n",
+  "stderr": ""
+}

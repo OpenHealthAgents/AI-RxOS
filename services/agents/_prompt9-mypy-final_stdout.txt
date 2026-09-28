@@ -1,0 +1,13 @@
+app\core\observability.py:19: error: Incompatible types in assignment (expression has type "None", variable has type Module)  [assignment]
+app\core\observability.py:20: error: Incompatible types in assignment (expression has type "None", variable has type Module)  [assignment]
+app\core\observability.py:21: error: Cannot assign to a type  [misc]
+app\core\observability.py:21: error: Incompatible types in assignment (expression has type "None", variable has type "type[Resource]")  [assignment]
+app\core\observability.py:22: error: Cannot assign to a type  [misc]
+app\core\observability.py:22: error: Incompatible types in assignment (expression has type "None", variable has type "type[TracerProvider]")  [assignment]
+app\core\observability.py:23: error: Cannot assign to a type  [misc]
+app\core\observability.py:23: error: Incompatible types in assignment (expression has type "None", variable has type "type[BatchSpanProcessor]")  [assignment]
+app\core\observability.py:24: error: Cannot assign to a type  [misc]
+app\core\observability.py:24: error: Incompatible types in assignment (expression has type "None", variable has type "type[OTLPSpanExporter]")  [assignment]
+app\core\observability.py:25: error: Cannot assign to a type  [misc]
+app\core\observability.py:25: error: Incompatible types in assignment (expression has type "None", variable has type "type[SpanKind]")  [assignment]
+Found 12 errors in 1 file (checked 42 source files)

@@ -1,0 +1,1396 @@
+[
+  {
+    "id": "job-test-1",
+    "source": "pubmed",
+    "query": "oncology",
+    "status": "dead_letter",
+    "created_at": "2026-08-24T06:11:45.749611+00:00",
+    "updated_at": "2026-08-24T06:11:45.778669+00:00",
+    "attempts": 2,
+    "max_retries": 3,
+    "error": "Stage failure simulation",
+    "result": null
+  },
+  {
+    "id": "9c4a66bc-e351-4d86-ad4c-6fae81b8e807",
+    "source": "pubmed",
+    "query": "trastuzumab HER2",
+    "status": "completed",
+    "created_at": "2026-08-24T06:11:45.881154+00:00",
+    "updated_at": "2026-08-24T06:12:41.708303+00:00",
+    "attempts": 10,
+    "max_retries": 3,
+    "error": null,
+    "result": {
+      "source": "pubmed",
+      "query": "trastuzumab HER2",
+      "items": [
+        {
+          "document": {
+            "title": "Successful Management and Treatment Rechallenge Following Docetaxel-Induced Serpentine Supravenous Hyperpigmentation With Bullous Features: A Case Report.",
+            "abstract": "Nair GR",
+            "content": "Nair GR",
+            "authors": [
+              "Nair GR",
+              "Koutsis J",
+              "Poels D",
+              "Agar N",
+              "Warrier S",
+              "Kumar S"
+            ],
+            "published_date": "2026 Aug",
+            "source": "pubmed",
+            "source_id": "PMID:42632995",
+            "doi": "doi: 10.1002/ccr3.73371",
+            "url": "https://pubmed.ncbi.nlm.nih.gov/42632995/",
+            "journal": "Clin Case Rep",
+            "document_type": "pubmed",
+            "metadata": {
+              "pmid": "42632995",
+              "query": "trastuzumab HER2"
+            }
+          },
+          "parsed": {
+            "text": "Nair GR",
+            "sentences": [
+              "Nair GR"
+            ],
+            "paragraphs": [
+              "Nair GR"
+            ],
+            "token_count": 2
+          },
+          "normalized_text": "Nair GR",
+          "entities": [
+            "GR"
+          ],
+          "structured_entities": [
+            {
+              "text": "GR",
+              "start": 5,
+              "end": 7,
+              "type": "gene",
+              "label": "gene",
+              "category": "genes",
+              "confidence": 0.7
+            }
+          ],
+          "relationships": [
+            {
+              "subject": "PMID:42632995",
+              "predicate": "reports",
+              "object": "Successful Management and Treatment Rechallenge Following Docetaxel-Induced Serpentine Supravenous Hyperpigmentation With Bullous Features: A Case Report.",
+              "subject_label": "publication",
+              "object_label": "finding",
+              "confidence": 0.95,
+              "evidence": "Document primary title finding.",
+              "source_document": {
+                "source": "pubmed",
+                "source_id": "PMID:42632995",
+                "url": "https://pubmed.ncbi.nlm.nih.gov/42632995/"
+              }
+            }
+          ],
+          "summary": "Successful Management and Treatment Rechallenge Following Docetaxel-Induced Serpentine Supravenous Hyperpigmentation With Bullous Features: A Case Report.. Nair GR",
+          "structured_summary": {
+            "summary_type": "extractive_fallback",
+            "concise_summary": "Successful Management and Treatment Rechallenge Following Docetaxel-Induced Serpentine Supravenous Hyperpigmentation With Bullous Features: A Case Report.. Nair GR",
+            "llm_used": false
+          },
+          "evidence_ranking": {
+            "score": 0.84,
+            "tier": "Medium",
+            "breakdown": {
+              "source_weight": 0.9,
+              "publication_type_score": 0.7,
+              "recency_score": 1.0,
+              "peer_review_score": 1.0,
+              "citation_score": 0.5
+            },
+            "peer_reviewed": true,
+            "citation_count": 0
+          },
+          "evidence": [
+            {
+              "entity": "GR",
+              "category": "genes",
+              "score": 0.84
+            }
+          ],
+          "chunks": [
+            {
+              "chunk_id": "PMID:42632995:0",
+              "chunk_index": 0,
+              "text": "Nair GR",
+              "metadata": {
+                "document_id": "PMID:42632995",
+                "source_type": "pubmed",
+                "source_id": "PMID:42632995",
+                "title": "Successful Management and Treatment Rechallenge Following Docetaxel-Induced Serpentine Supravenous Hyperpigmentation With Bullous Features: A Case Report.",
+                "entity_ids": [
+                  "a21bc274-42f3-506a-bec0-fe599aae926d"
+                ],
+                "entity_types": [
+                  "Gene"
+                ],
+                "organization_id": null,
+                "workspace_id": null,
+                "project_id": null,
+                "version": 1,
+                "created_at": "2026-08-24T06:11:49.836944+00:00",
+                "updated_at": "2026-08-24T06:11:49.836944+00:00",
+                "provenance": {
+                  "source": "pubmed",
+                  "url": "https://pubmed.ncbi.nlm.nih.gov/42632995/",
+                  "doi": "doi: 10.1002/ccr3.73371"
+                },
+                "citation": {
+                  "title": "Successful Management and Treatment Rechallenge Following Docetaxel-Induced Serpentine Supravenous Hyperpigmentation With Bullous Features: A Case Report.",
+                  "doi": "doi: 10.1002/ccr3.73371",
+                  "url": "https://pubmed.ncbi.nlm.nih.gov/42632995/"
+                }
+              }
+            }
+          ],
+          "kg_entity_id_map": {}
+        },
+        {
+          "document": {
+            "title": "Pharmacotherapy for older adults with cancer: a digest of the Japanese clinical practice guidelines (second edition)-breast cancer.",
+            "abstract": "Takano Y",
+            "content": "Takano Y",
+            "authors": [
+              "Takano Y",
+              "Shimomura A",
+              "Morita S",
+              "Kosaka T",
+              "Koi Y",
+              "Tokuda E",
+              "Nagashima F",
+              "Matsuoka A",
+              "Sawaki M",
+              "JSMO/JSCO Clinical Practice Guideline Committee for Pharmacotherapy in Older Adults with Cancer"
+            ],
+            "published_date": "2026 Aug 21",
+            "source": "pubmed",
+            "source_id": "PMID:42629540",
+            "doi": "doi: 10.1007/s10147-026-03173-1",
+            "url": "https://pubmed.ncbi.nlm.nih.gov/42629540/",
+            "journal": "Int J Clin Oncol",
+            "document_type": "pubmed",
+            "metadata": {
+              "pmid": "42629540",
+              "query": "trastuzumab HER2"
+            }
+          },
+          "parsed": {
+            "text": "Takano Y",
+            "sentences": [
+              "Takano Y"
+            ],
+            "paragraphs": [
+              "Takano Y"
+            ],
+            "token_count": 2
+          },
+          "normalized_text": "Takano Y",
+          "entities": [],
+          "structured_entities": [],
+          "relationships": [
+            {
+              "subject": "PMID:42629540",
+              "predicate": "reports",
+              "object": "Pharmacotherapy for older adults with cancer: a digest of the Japanese clinical practice guidelines (second edition)-breast cancer.",
+              "subject_label": "publication",
+              "object_label": "finding",
+              "confidence": 0.95,
+              "evidence": "Document primary title finding.",
+              "source_document": {
+                "source": "pubmed",
+                "source_id": "PMID:42629540",
+                "url": "https://pubmed.ncbi.nlm.nih.gov/42629540/"
+              }
+            }
+          ],
+          "summary": "Pharmacotherapy for older adults with cancer: a digest of the Japanese clinical practice guidelines (second edition)-breast cancer.. Takano Y",
+          "structured_summary": {
+            "summary_type": "extractive_fallback",
+            "concise_summary": "Pharmacotherapy for older adults with cancer: a digest of the Japanese clinical practice guidelines (second edition)-breast cancer.. Takano Y",
+            "llm_used": false
+          },
+          "evidence_ranking": {
+            "score": 0.9025,
+            "tier": "High",
+            "breakdown": {
+              "source_weight": 0.9,
+              "publication_type_score": 0.95,
+              "recency_score": 1.0,
+              "peer_review_score": 1.0,
+              "citation_score": 0.5
+            },
+            "peer_reviewed": true,
+            "citation_count": 0
+          },
+          "evidence": [
+            {
+              "entity": "literature_document",
+              "score": 0.9025
+            }
+          ],
+          "chunks": [
+            {
+              "chunk_id": "PMID:42629540:0",
+              "chunk_index": 0,
+              "text": "Takano Y",
+              "metadata": {
+                "document_id": "PMID:42629540",
+                "source_type": "pubmed",
+                "source_id": "PMID:42629540",
+                "title": "Pharmacotherapy for older adults with cancer: a digest of the Japanese clinical practice guidelines (second edition)-breast cancer.",
+                "entity_ids": [],
+                "entity_types": [],
+                "organization_id": null,
+                "workspace_id": null,
+                "project_id": null,
+                "version": 1,
+                "created_at": "2026-08-24T06:11:49.836944+00:00",
+                "updated_at": "2026-08-24T06:11:49.836944+00:00",
+                "provenance": {
+                  "source": "pubmed",
+                  "url": "https://pubmed.ncbi.nlm.nih.gov/42629540/",
+                  "doi": "doi: 10.1007/s10147-026-03173-1"
+                },
+                "citation": {
+                  "title": "Pharmacotherapy for older adults with cancer: a digest of the Japanese clinical practice guidelines (second edition)-breast cancer.",
+                  "doi": "doi: 10.1007/s10147-026-03173-1",
+                  "url": "https://pubmed.ncbi.nlm.nih.gov/42629540/"
+                }
+              }
+            }
+          ],
+          "kg_entity_id_map": {}
+        },
+        {
+          "document": {
+            "title": "Clinical management of adverse events in patients with advanced HER2+ metastatic breast cancer treated with tucatinib, trastuzumab, and capecitabine.",
+            "abstract": "Okines AFC",
+            "content": "Okines AFC",
+            "authors": [
+              "Okines AFC",
+              "Roesch E",
+              "Watkins K",
+              "Pitner MK",
+              "Hutchinson KM",
+              "Simon S",
+              "Yan F"
+            ],
+            "published_date": "2026 Aug 21",
+            "source": "pubmed",
+            "source_id": "PMID:42627360",
+            "doi": "pii: oyag330. doi: 10.1093/oncolo/oyag330",
+            "url": "https://pubmed.ncbi.nlm.nih.gov/42627360/",
+            "journal": "Oncologist",
+            "document_type": "pubmed",
+            "metadata": {
+              "pmid": "42627360",
+              "query": "trastuzumab HER2"
+            }
+          },
+          "parsed": {
+            "text": "Okines AFC",
+            "sentences": [
+              "Okines AFC"
+            ],
+            "paragraphs": [
+              "Okines AFC"
+            ],
+            "token_count": 2
+          },
+          "normalized_text": "Okines AFC",
+          "entities": [
+            "AFC"
+          ],
+          "structured_entities": [
+            {
+              "text": "AFC",
+              "start": 7,
+              "end": 10,
+              "type": "gene",
+              "label": "gene",
+              "category": "genes",
+              "confidence": 0.7
+            }
+          ],
+          "relationships": [
+            {
+              "subject": "PMID:42627360",
+              "predicate": "reports",
+              "object": "Clinical management of adverse events in patients with advanced HER2+ metastatic breast cancer treated with tucatinib, trastuzumab, and capecitabine.",
+              "subject_label": "publication",
+              "object_label": "finding",
+              "confidence": 0.95,
+              "evidence": "Document primary title finding.",
+              "source_document": {
+                "source": "pubmed",
+                "source_id": "PMID:42627360",
+                "url": "https://pubmed.ncbi.nlm.nih.gov/42627360/"
+              }
+            }
+          ],
+          "summary": "Clinical management of adverse events in patients with advanced HER2+ metastatic breast cancer treated with tucatinib, trastuzumab, and capecitabine.. Okines AFC",
+          "structured_summary": {
+            "summary_type": "extractive_fallback",
+            "concise_summary": "Clinical management of adverse events in patients with advanced HER2+ metastatic breast cancer treated with tucatinib, trastuzumab, and capecitabine.. Okines AFC",
+            "llm_used": false
+          },
+          "evidence_ranking": {
+            "score": 0.84,
+            "tier": "Medium",
+            "breakdown": {
+              "source_weight": 0.9,
+              "publication_type_score": 0.7,
+              "recency_score": 1.0,
+              "peer_review_score": 1.0,
+              "citation_score": 0.5
+            },
+            "peer_reviewed": true,
+            "citation_count": 0
+          },
+          "evidence": [
+            {
+              "entity": "AFC",
+              "category": "genes",
+              "score": 0.84
+            }
+          ],
+          "chunks": [
+            {
+              "chunk_id": "PMID:42627360:0",
+              "chunk_index": 0,
+              "text": "Okines AFC",
+              "metadata": {
+                "document_id": "PMID:42627360",
+                "source_type": "pubmed",
+                "source_id": "PMID:42627360",
+                "title": "Clinical management of adverse events in patients with advanced HER2+ metastatic breast cancer treated with tucatinib, trastuzumab, and capecitabine.",
+                "entity_ids": [
+                  "60119a18-ed33-5d80-93bb-c7ec2c2b6b15"
+                ],
+                "entity_types": [
+                  "Gene"
+                ],
+                "organization_id": null,
+                "workspace_id": null,
+                "project_id": null,
+                "version": 1,
+                "created_at": "2026-08-24T06:11:49.836944+00:00",
+                "updated_at": "2026-08-24T06:11:49.836944+00:00",
+                "provenance": {
+                  "source": "pubmed",
+                  "url": "https://pubmed.ncbi.nlm.nih.gov/42627360/",
+                  "doi": "pii: oyag330. doi: 10.1093/oncolo/oyag330"
+                },
+                "citation": {
+                  "title": "Clinical management of adverse events in patients with advanced HER2+ metastatic breast cancer treated with tucatinib, trastuzumab, and capecitabine.",
+                  "doi": "pii: oyag330. doi: 10.1093/oncolo/oyag330",
+                  "url": "https://pubmed.ncbi.nlm.nih.gov/42627360/"
+                }
+              }
+            }
+          ],
+          "kg_entity_id_map": {}
+        },
+        {
+          "document": {
+            "title": "Pathologic Complete Response (pCR) Rate and Predictors of Response to Taxane, Trastuzumab, and Pertuzumab in HER2\u2011Positive Breast Cancer: Secondary Analyses of EA1181/CompassHER2 pCR.",
+            "abstract": "Tung N",
+            "content": "Tung N",
+            "authors": [
+              "Tung N",
+              "Zhao F",
+              "DeMichele A",
+              "Prat A",
+              "Winer EP",
+              "Wright JL",
+              "Recht A",
+              "Weiss AC",
+              "Tjoe JA",
+              "Feldman SM",
+              "Rocque GB",
+              "Smith ML",
+              "O'Sullivan CC",
+              "Sardesai SD",
+              "Tang SC",
+              "Modi S",
+              "Irvin WJ",
+              "Unni N",
+              "Battelli C",
+              "Bagegni N",
+              "Krie AK",
+              "George MA",
+              "Telli ML",
+              "Borges VF",
+              "D'Abreo N",
+              "Shah P",
+              "Villagrasa P",
+              "Badve S",
+              "Partridge AH",
+              "Miller KD",
+              "Carey LA",
+              "Wolff AC"
+            ],
+            "published_date": "2026 Aug 20",
+            "source": "pubmed",
+            "source_id": "PMID:42623567",
+            "doi": "doi: 10.1200/JCO-25-02255",
+            "url": "https://pubmed.ncbi.nlm.nih.gov/42623567/",
+            "journal": "J Clin Oncol",
+            "document_type": "pubmed",
+            "metadata": {
+              "pmid": "42623567",
+              "query": "trastuzumab HER2"
+            }
+          },
+          "parsed": {
+            "text": "Tung N",
+            "sentences": [
+              "Tung N"
+            ],
+            "paragraphs": [
+              "Tung N"
+            ],
+            "token_count": 2
+          },
+          "normalized_text": "Tung N",
+          "entities": [],
+          "structured_entities": [],
+          "relationships": [
+            {
+              "subject": "PMID:42623567",
+              "predicate": "reports",
+              "object": "Pathologic Complete Response (pCR) Rate and Predictors of Response to Taxane, Trastuzumab, and Pertuzumab in HER2\u2011Positive Breast Cancer: Secondary Analyses of EA1181/CompassHER2 pCR.",
+              "subject_label": "publication",
+              "object_label": "finding",
+              "confidence": 0.95,
+              "evidence": "Document primary title finding.",
+              "source_document": {
+                "source": "pubmed",
+                "source_id": "PMID:42623567",
+                "url": "https://pubmed.ncbi.nlm.nih.gov/42623567/"
+              }
+            }
+          ],
+          "summary": "Pathologic Complete Response (pCR) Rate and Predictors of Response to Taxane, Trastuzumab, and Pertuzumab in HER2\u2011Positive Breast Cancer: Secondary Analyses of EA1181/CompassHER2 pCR.. Tung N",
+          "structured_summary": {
+            "summary_type": "extractive_fallback",
+            "concise_summary": "Pathologic Complete Response (pCR) Rate and Predictors of Response to Taxane, Trastuzumab, and Pertuzumab in HER2\u2011Positive Breast Cancer: Secondary Analyses of EA1181/CompassHER2 pCR.. Tung N",
+            "llm_used": false
+          },
+          "evidence_ranking": {
+            "score": 0.84,
+            "tier": "Medium",
+            "breakdown": {
+              "source_weight": 0.9,
+              "publication_type_score": 0.7,
+              "recency_score": 1.0,
+              "peer_review_score": 1.0,
+              "citation_score": 0.5
+            },
+            "peer_reviewed": true,
+            "citation_count": 0
+          },
+          "evidence": [
+            {
+              "entity": "literature_document",
+              "score": 0.84
+            }
+          ],
+          "chunks": [
+            {
+              "chunk_id": "PMID:42623567:0",
+              "chunk_index": 0,
+              "text": "Tung N",
+              "metadata": {
+                "document_id": "PMID:42623567",
+                "source_type": "pubmed",
+                "source_id": "PMID:42623567",
+                "title": "Pathologic Complete Response (pCR) Rate and Predictors of Response to Taxane, Trastuzumab, and Pertuzumab in HER2\u2011Positive Breast Cancer: Secondary Analyses of EA1181/CompassHER2 pCR.",
+                "entity_ids": [],
+                "entity_types": [],
+                "organization_id": null,
+                "workspace_id": null,
+                "project_id": null,
+                "version": 1,
+                "created_at": "2026-08-24T06:11:49.836944+00:00",
+                "updated_at": "2026-08-24T06:11:49.836944+00:00",
+                "provenance": {
+                  "source": "pubmed",
+                  "url": "https://pubmed.ncbi.nlm.nih.gov/42623567/",
+                  "doi": "doi: 10.1200/JCO-25-02255"
+                },
+                "citation": {
+                  "title": "Pathologic Complete Response (pCR) Rate and Predictors of Response to Taxane, Trastuzumab, and Pertuzumab in HER2\u2011Positive Breast Cancer: Secondary Analyses of EA1181/CompassHER2 pCR.",
+                  "doi": "doi: 10.1200/JCO-25-02255",
+                  "url": "https://pubmed.ncbi.nlm.nih.gov/42623567/"
+                }
+              }
+            }
+          ],
+          "kg_entity_id_map": {}
+        },
+        {
+          "document": {
+            "title": "Real-world clinical outcomes of Trastuzumab Deruxtecan in HER2-expressing ovarian and endometrial Cancer.",
+            "abstract": "Silverstein J",
+            "content": "Silverstein J",
+            "authors": [
+              "Silverstein J",
+              "Alomaja O",
+              "Chatram D",
+              "Hajiabbasi M",
+              "Shachar E",
+              "Tseng CH",
+              "Thaker S",
+              "Bardia A",
+              "Karlan B",
+              "Hendrickson AW",
+              "Konecny GE"
+            ],
+            "published_date": "2026 Aug",
+            "source": "pubmed",
+            "source_id": "PMID:42621866",
+            "doi": "doi: 10.1016/j.gore.2026.102183",
+            "url": "https://pubmed.ncbi.nlm.nih.gov/42621866/",
+            "journal": "Gynecol Oncol Rep",
+            "document_type": "pubmed",
+            "metadata": {
+              "pmid": "42621866",
+              "query": "trastuzumab HER2"
+            }
+          },
+          "parsed": {
+            "text": "Silverstein J",
+            "sentences": [
+              "Silverstein J"
+            ],
+            "paragraphs": [
+              "Silverstein J"
+            ],
+            "token_count": 2
+          },
+          "normalized_text": "Silverstein J",
+          "entities": [],
+          "structured_entities": [],
+          "relationships": [
+            {
+              "subject": "PMID:42621866",
+              "predicate": "reports",
+              "object": "Real-world clinical outcomes of Trastuzumab Deruxtecan in HER2-expressing ovarian and endometrial Cancer.",
+              "subject_label": "publication",
+              "object_label": "finding",
+              "confidence": 0.95,
+              "evidence": "Document primary title finding.",
+              "source_document": {
+                "source": "pubmed",
+                "source_id": "PMID:42621866",
+                "url": "https://pubmed.ncbi.nlm.nih.gov/42621866/"
+              }
+            }
+          ],
+          "summary": "Real-world clinical outcomes of Trastuzumab Deruxtecan in HER2-expressing ovarian and endometrial Cancer.. Silverstein J",
+          "structured_summary": {
+            "summary_type": "extractive_fallback",
+            "concise_summary": "Real-world clinical outcomes of Trastuzumab Deruxtecan in HER2-expressing ovarian and endometrial Cancer.. Silverstein J",
+            "llm_used": false
+          },
+          "evidence_ranking": {
+            "score": 0.84,
+            "tier": "Medium",
+            "breakdown": {
+              "source_weight": 0.9,
+              "publication_type_score": 0.7,
+              "recency_score": 1.0,
+              "peer_review_score": 1.0,
+              "citation_score": 0.5
+            },
+            "peer_reviewed": true,
+            "citation_count": 0
+          },
+          "evidence": [
+            {
+              "entity": "literature_document",
+              "score": 0.84
+            }
+          ],
+          "chunks": [
+            {
+              "chunk_id": "PMID:42621866:0",
+              "chunk_index": 0,
+              "text": "Silverstein J",
+              "metadata": {
+                "document_id": "PMID:42621866",
+                "source_type": "pubmed",
+                "source_id": "PMID:42621866",
+                "title": "Real-world clinical outcomes of Trastuzumab Deruxtecan in HER2-expressing ovarian and endometrial Cancer.",
+                "entity_ids": [],
+                "entity_types": [],
+                "organization_id": null,
+                "workspace_id": null,
+                "project_id": null,
+                "version": 1,
+                "created_at": "2026-08-24T06:11:49.836944+00:00",
+                "updated_at": "2026-08-24T06:11:49.836944+00:00",
+                "provenance": {
+                  "source": "pubmed",
+                  "url": "https://pubmed.ncbi.nlm.nih.gov/42621866/",
+                  "doi": "doi: 10.1016/j.gore.2026.102183"
+                },
+                "citation": {
+                  "title": "Real-world clinical outcomes of Trastuzumab Deruxtecan in HER2-expressing ovarian and endometrial Cancer.",
+                  "doi": "doi: 10.1016/j.gore.2026.102183",
+                  "url": "https://pubmed.ncbi.nlm.nih.gov/42621866/"
+                }
+              }
+            }
+          ],
+          "kg_entity_id_map": {}
+        }
+      ],
+      "limitation": null,
+      "source_status": {
+        "connected": true
+      },
+      "tenant": {
+        "user_id": "test-user-fallback"
+      },
+      "processed_items": [
+        {
+          "document": {
+            "title": "Successful Management and Treatment Rechallenge Following Docetaxel-Induced Serpentine Supravenous Hyperpigmentation With Bullous Features: A Case Report.",
+            "abstract": "Nair GR",
+            "content": "Nair GR",
+            "authors": [
+              "Nair GR",
+              "Koutsis J",
+              "Poels D",
+              "Agar N",
+              "Warrier S",
+              "Kumar S"
+            ],
+            "published_date": "2026 Aug",
+            "source": "pubmed",
+            "source_id": "PMID:42632995",
+            "doi": "doi: 10.1002/ccr3.73371",
+            "url": "https://pubmed.ncbi.nlm.nih.gov/42632995/",
+            "journal": "Clin Case Rep",
+            "document_type": "pubmed",
+            "metadata": {
+              "pmid": "42632995",
+              "query": "trastuzumab HER2"
+            }
+          },
+          "parsed": {
+            "text": "Nair GR",
+            "sentences": [
+              "Nair GR"
+            ],
+            "paragraphs": [
+              "Nair GR"
+            ],
+            "token_count": 2
+          },
+          "normalized_text": "Nair GR",
+          "entities": [
+            "GR"
+          ],
+          "structured_entities": [
+            {
+              "text": "GR",
+              "start": 5,
+              "end": 7,
+              "type": "gene",
+              "label": "gene",
+              "category": "genes",
+              "confidence": 0.7
+            }
+          ],
+          "relationships": [
+            {
+              "subject": "PMID:42632995",
+              "predicate": "reports",
+              "object": "Successful Management and Treatment Rechallenge Following Docetaxel-Induced Serpentine Supravenous Hyperpigmentation With Bullous Features: A Case Report.",
+              "subject_label": "publication",
+              "object_label": "finding",
+              "confidence": 0.95,
+              "evidence": "Document primary title finding.",
+              "source_document": {
+                "source": "pubmed",
+                "source_id": "PMID:42632995",
+                "url": "https://pubmed.ncbi.nlm.nih.gov/42632995/"
+              }
+            }
+          ],
+          "summary": "Successful Management and Treatment Rechallenge Following Docetaxel-Induced Serpentine Supravenous Hyperpigmentation With Bullous Features: A Case Report.. Nair GR",
+          "structured_summary": {
+            "summary_type": "extractive_fallback",
+            "concise_summary": "Successful Management and Treatment Rechallenge Following Docetaxel-Induced Serpentine Supravenous Hyperpigmentation With Bullous Features: A Case Report.. Nair GR",
+            "llm_used": false
+          },
+          "evidence_ranking": {
+            "score": 0.84,
+            "tier": "Medium",
+            "breakdown": {
+              "source_weight": 0.9,
+              "publication_type_score": 0.7,
+              "recency_score": 1.0,
+              "peer_review_score": 1.0,
+              "citation_score": 0.5
+            },
+            "peer_reviewed": true,
+            "citation_count": 0
+          },
+          "evidence": [
+            {
+              "entity": "GR",
+              "category": "genes",
+              "score": 0.84
+            }
+          ],
+          "chunks": [
+            {
+              "chunk_id": "PMID:42632995:0",
+              "chunk_index": 0,
+              "text": "Nair GR",
+              "metadata": {
+                "document_id": "PMID:42632995",
+                "source_type": "pubmed",
+                "source_id": "PMID:42632995",
+                "title": "Successful Management and Treatment Rechallenge Following Docetaxel-Induced Serpentine Supravenous Hyperpigmentation With Bullous Features: A Case Report.",
+                "entity_ids": [
+                  "a21bc274-42f3-506a-bec0-fe599aae926d"
+                ],
+                "entity_types": [
+                  "Gene"
+                ],
+                "organization_id": null,
+                "workspace_id": null,
+                "project_id": null,
+                "version": 1,
+                "created_at": "2026-08-24T06:11:49.836944+00:00",
+                "updated_at": "2026-08-24T06:11:49.836944+00:00",
+                "provenance": {
+                  "source": "pubmed",
+                  "url": "https://pubmed.ncbi.nlm.nih.gov/42632995/",
+                  "doi": "doi: 10.1002/ccr3.73371"
+                },
+                "citation": {
+                  "title": "Successful Management and Treatment Rechallenge Following Docetaxel-Induced Serpentine Supravenous Hyperpigmentation With Bullous Features: A Case Report.",
+                  "doi": "doi: 10.1002/ccr3.73371",
+                  "url": "https://pubmed.ncbi.nlm.nih.gov/42632995/"
+                }
+              }
+            }
+          ],
+          "kg_entity_id_map": {}
+        },
+        {
+          "document": {
+            "title": "Pharmacotherapy for older adults with cancer: a digest of the Japanese clinical practice guidelines (second edition)-breast cancer.",
+            "abstract": "Takano Y",
+            "content": "Takano Y",
+            "authors": [
+              "Takano Y",
+              "Shimomura A",
+              "Morita S",
+              "Kosaka T",
+              "Koi Y",
+              "Tokuda E",
+              "Nagashima F",
+              "Matsuoka A",
+              "Sawaki M",
+              "JSMO/JSCO Clinical Practice Guideline Committee for Pharmacotherapy in Older Adults with Cancer"
+            ],
+            "published_date": "2026 Aug 21",
+            "source": "pubmed",
+            "source_id": "PMID:42629540",
+            "doi": "doi: 10.1007/s10147-026-03173-1",
+            "url": "https://pubmed.ncbi.nlm.nih.gov/42629540/",
+            "journal": "Int J Clin Oncol",
+            "document_type": "pubmed",
+            "metadata": {
+              "pmid": "42629540",
+              "query": "trastuzumab HER2"
+            }
+          },
+          "parsed": {
+            "text": "Takano Y",
+            "sentences": [
+              "Takano Y"
+            ],
+            "paragraphs": [
+              "Takano Y"
+            ],
+            "token_count": 2
+          },
+          "normalized_text": "Takano Y",
+          "entities": [],
+          "structured_entities": [],
+          "relationships": [
+            {
+              "subject": "PMID:42629540",
+              "predicate": "reports",
+              "object": "Pharmacotherapy for older adults with cancer: a digest of the Japanese clinical practice guidelines (second edition)-breast cancer.",
+              "subject_label": "publication",
+              "object_label": "finding",
+              "confidence": 0.95,
+              "evidence": "Document primary title finding.",
+              "source_document": {
+                "source": "pubmed",
+                "source_id": "PMID:42629540",
+                "url": "https://pubmed.ncbi.nlm.nih.gov/42629540/"
+              }
+            }
+          ],
+          "summary": "Pharmacotherapy for older adults with cancer: a digest of the Japanese clinical practice guidelines (second edition)-breast cancer.. Takano Y",
+          "structured_summary": {
+            "summary_type": "extractive_fallback",
+            "concise_summary": "Pharmacotherapy for older adults with cancer: a digest of the Japanese clinical practice guidelines (second edition)-breast cancer.. Takano Y",
+            "llm_used": false
+          },
+          "evidence_ranking": {
+            "score": 0.9025,
+            "tier": "High",
+            "breakdown": {
+              "source_weight": 0.9,
+              "publication_type_score": 0.95,
+              "recency_score": 1.0,
+              "peer_review_score": 1.0,
+              "citation_score": 0.5
+            },
+            "peer_reviewed": true,
+            "citation_count": 0
+          },
+          "evidence": [
+            {
+              "entity": "literature_document",
+              "score": 0.9025
+            }
+          ],
+          "chunks": [
+            {
+              "chunk_id": "PMID:42629540:0",
+              "chunk_index": 0,
+              "text": "Takano Y",
+              "metadata": {
+                "document_id": "PMID:42629540",
+                "source_type": "pubmed",
+                "source_id": "PMID:42629540",
+                "title": "Pharmacotherapy for older adults with cancer: a digest of the Japanese clinical practice guidelines (second edition)-breast cancer.",
+                "entity_ids": [],
+                "entity_types": [],
+                "organization_id": null,
+                "workspace_id": null,
+                "project_id": null,
+                "version": 1,
+                "created_at": "2026-08-24T06:11:49.836944+00:00",
+                "updated_at": "2026-08-24T06:11:49.836944+00:00",
+                "provenance": {
+                  "source": "pubmed",
+                  "url": "https://pubmed.ncbi.nlm.nih.gov/42629540/",
+                  "doi": "doi: 10.1007/s10147-026-03173-1"
+                },
+                "citation": {
+                  "title": "Pharmacotherapy for older adults with cancer: a digest of the Japanese clinical practice guidelines (second edition)-breast cancer.",
+                  "doi": "doi: 10.1007/s10147-026-03173-1",
+                  "url": "https://pubmed.ncbi.nlm.nih.gov/42629540/"
+                }
+              }
+            }
+          ],
+          "kg_entity_id_map": {}
+        },
+        {
+          "document": {
+            "title": "Clinical management of adverse events in patients with advanced HER2+ metastatic breast cancer treated with tucatinib, trastuzumab, and capecitabine.",
+            "abstract": "Okines AFC",
+            "content": "Okines AFC",
+            "authors": [
+              "Okines AFC",
+              "Roesch E",
+              "Watkins K",
+              "Pitner MK",
+              "Hutchinson KM",
+              "Simon S",
+              "Yan F"
+            ],
+            "published_date": "2026 Aug 21",
+            "source": "pubmed",
+            "source_id": "PMID:42627360",
+            "doi": "pii: oyag330. doi: 10.1093/oncolo/oyag330",
+            "url": "https://pubmed.ncbi.nlm.nih.gov/42627360/",
+            "journal": "Oncologist",
+            "document_type": "pubmed",
+            "metadata": {
+              "pmid": "42627360",
+              "query": "trastuzumab HER2"
+            }
+          },
+          "parsed": {
+            "text": "Okines AFC",
+            "sentences": [
+              "Okines AFC"
+            ],
+            "paragraphs": [
+              "Okines AFC"
+            ],
+            "token_count": 2
+          },
+          "normalized_text": "Okines AFC",
+          "entities": [
+            "AFC"
+          ],
+          "structured_entities": [
+            {
+              "text": "AFC",
+              "start": 7,
+              "end": 10,
+              "type": "gene",
+              "label": "gene",
+              "category": "genes",
+              "confidence": 0.7
+            }
+          ],
+          "relationships": [
+            {
+              "subject": "PMID:42627360",
+              "predicate": "reports",
+              "object": "Clinical management of adverse events in patients with advanced HER2+ metastatic breast cancer treated with tucatinib, trastuzumab, and capecitabine.",
+              "subject_label": "publication",
+              "object_label": "finding",
+              "confidence": 0.95,
+              "evidence": "Document primary title finding.",
+              "source_document": {
+                "source": "pubmed",
+                "source_id": "PMID:42627360",
+                "url": "https://pubmed.ncbi.nlm.nih.gov/42627360/"
+              }
+            }
+          ],
+          "summary": "Clinical management of adverse events in patients with advanced HER2+ metastatic breast cancer treated with tucatinib, trastuzumab, and capecitabine.. Okines AFC",
+          "structured_summary": {
+            "summary_type": "extractive_fallback",
+            "concise_summary": "Clinical management of adverse events in patients with advanced HER2+ metastatic breast cancer treated with tucatinib, trastuzumab, and capecitabine.. Okines AFC",
+            "llm_used": false
+          },
+          "evidence_ranking": {
+            "score": 0.84,
+            "tier": "Medium",
+            "breakdown": {
+              "source_weight": 0.9,
+              "publication_type_score": 0.7,
+              "recency_score": 1.0,
+              "peer_review_score": 1.0,
+              "citation_score": 0.5
+            },
+            "peer_reviewed": true,
+            "citation_count": 0
+          },
+          "evidence": [
+            {
+              "entity": "AFC",
+              "category": "genes",
+              "score": 0.84
+            }
+          ],
+          "chunks": [
+            {
+              "chunk_id": "PMID:42627360:0",
+              "chunk_index": 0,
+              "text": "Okines AFC",
+              "metadata": {
+                "document_id": "PMID:42627360",
+                "source_type": "pubmed",
+                "source_id": "PMID:42627360",
+                "title": "Clinical management of adverse events in patients with advanced HER2+ metastatic breast cancer treated with tucatinib, trastuzumab, and capecitabine.",
+                "entity_ids": [
+                  "60119a18-ed33-5d80-93bb-c7ec2c2b6b15"
+                ],
+                "entity_types": [
+                  "Gene"
+                ],
+                "organization_id": null,
+                "workspace_id": null,
+                "project_id": null,
+                "version": 1,
+                "created_at": "2026-08-24T06:11:49.836944+00:00",
+                "updated_at": "2026-08-24T06:11:49.836944+00:00",
+                "provenance": {
+                  "source": "pubmed",
+                  "url": "https://pubmed.ncbi.nlm.nih.gov/42627360/",
+                  "doi": "pii: oyag330. doi: 10.1093/oncolo/oyag330"
+                },
+                "citation": {
+                  "title": "Clinical management of adverse events in patients with advanced HER2+ metastatic breast cancer treated with tucatinib, trastuzumab, and capecitabine.",
+                  "doi": "pii: oyag330. doi: 10.1093/oncolo/oyag330",
+                  "url": "https://pubmed.ncbi.nlm.nih.gov/42627360/"
+                }
+              }
+            }
+          ],
+          "kg_entity_id_map": {}
+        },
+        {
+          "document": {
+            "title": "Pathologic Complete Response (pCR) Rate and Predictors of Response to Taxane, Trastuzumab, and Pertuzumab in HER2\u2011Positive Breast Cancer: Secondary Analyses of EA1181/CompassHER2 pCR.",
+            "abstract": "Tung N",
+            "content": "Tung N",
+            "authors": [
+              "Tung N",
+              "Zhao F",
+              "DeMichele A",
+              "Prat A",
+              "Winer EP",
+              "Wright JL",
+              "Recht A",
+              "Weiss AC",
+              "Tjoe JA",
+              "Feldman SM",
+              "Rocque GB",
+              "Smith ML",
+              "O'Sullivan CC",
+              "Sardesai SD",
+              "Tang SC",
+              "Modi S",
+              "Irvin WJ",
+              "Unni N",
+              "Battelli C",
+              "Bagegni N",
+              "Krie AK",
+              "George MA",
+              "Telli ML",
+              "Borges VF",
+              "D'Abreo N",
+              "Shah P",
+              "Villagrasa P",
+              "Badve S",
+              "Partridge AH",
+              "Miller KD",
+              "Carey LA",
+              "Wolff AC"
+            ],
+            "published_date": "2026 Aug 20",
+            "source": "pubmed",
+            "source_id": "PMID:42623567",
+            "doi": "doi: 10.1200/JCO-25-02255",
+            "url": "https://pubmed.ncbi.nlm.nih.gov/42623567/",
+            "journal": "J Clin Oncol",
+            "document_type": "pubmed",
+            "metadata": {
+              "pmid": "42623567",
+              "query": "trastuzumab HER2"
+            }
+          },
+          "parsed": {
+            "text": "Tung N",
+            "sentences": [
+              "Tung N"
+            ],
+            "paragraphs": [
+              "Tung N"
+            ],
+            "token_count": 2
+          },
+          "normalized_text": "Tung N",
+          "entities": [],
+          "structured_entities": [],
+          "relationships": [
+            {
+              "subject": "PMID:42623567",
+              "predicate": "reports",
+              "object": "Pathologic Complete Response (pCR) Rate and Predictors of Response to Taxane, Trastuzumab, and Pertuzumab in HER2\u2011Positive Breast Cancer: Secondary Analyses of EA1181/CompassHER2 pCR.",
+              "subject_label": "publication",
+              "object_label": "finding",
+              "confidence": 0.95,
+              "evidence": "Document primary title finding.",
+              "source_document": {
+                "source": "pubmed",
+                "source_id": "PMID:42623567",
+                "url": "https://pubmed.ncbi.nlm.nih.gov/42623567/"
+              }
+            }
+          ],
+          "summary": "Pathologic Complete Response (pCR) Rate and Predictors of Response to Taxane, Trastuzumab, and Pertuzumab in HER2\u2011Positive Breast Cancer: Secondary Analyses of EA1181/CompassHER2 pCR.. Tung N",
+          "structured_summary": {
+            "summary_type": "extractive_fallback",
+            "concise_summary": "Pathologic Complete Response (pCR) Rate and Predictors of Response to Taxane, Trastuzumab, and Pertuzumab in HER2\u2011Positive Breast Cancer: Secondary Analyses of EA1181/CompassHER2 pCR.. Tung N",
+            "llm_used": false
+          },
+          "evidence_ranking": {
+            "score": 0.84,
+            "tier": "Medium",
+            "breakdown": {
+              "source_weight": 0.9,
+              "publication_type_score": 0.7,
+              "recency_score": 1.0,
+              "peer_review_score": 1.0,
+              "citation_score": 0.5
+            },
+            "peer_reviewed": true,
+            "citation_count": 0
+          },
+          "evidence": [
+            {
+              "entity": "literature_document",
+              "score": 0.84
+            }
+          ],
+          "chunks": [
+            {
+              "chunk_id": "PMID:42623567:0",
+              "chunk_index": 0,
+              "text": "Tung N",
+              "metadata": {
+                "document_id": "PMID:42623567",
+                "source_type": "pubmed",
+                "source_id": "PMID:42623567",
+                "title": "Pathologic Complete Response (pCR) Rate and Predictors of Response to Taxane, Trastuzumab, and Pertuzumab in HER2\u2011Positive Breast Cancer: Secondary Analyses of EA1181/CompassHER2 pCR.",
+                "entity_ids": [],
+                "entity_types": [],
+                "organization_id": null,
+                "workspace_id": null,
+                "project_id": null,
+                "version": 1,
+                "created_at": "2026-08-24T06:11:49.836944+00:00",
+                "updated_at": "2026-08-24T06:11:49.836944+00:00",
+                "provenance": {
+                  "source": "pubmed",
+                  "url": "https://pubmed.ncbi.nlm.nih.gov/42623567/",
+                  "doi": "doi: 10.1200/JCO-25-02255"
+                },
+                "citation": {
+                  "title": "Pathologic Complete Response (pCR) Rate and Predictors of Response to Taxane, Trastuzumab, and Pertuzumab in HER2\u2011Positive Breast Cancer: Secondary Analyses of EA1181/CompassHER2 pCR.",
+                  "doi": "doi: 10.1200/JCO-25-02255",
+                  "url": "https://pubmed.ncbi.nlm.nih.gov/42623567/"
+                }
+              }
+            }
+          ],
+          "kg_entity_id_map": {}
+        },
+        {
+          "document": {
+            "title": "Real-world clinical outcomes of Trastuzumab Deruxtecan in HER2-expressing ovarian and endometrial Cancer.",
+            "abstract": "Silverstein J",
+            "content": "Silverstein J",
+            "authors": [
+              "Silverstein J",
+              "Alomaja O",
+              "Chatram D",
+              "Hajiabbasi M",
+              "Shachar E",
+              "Tseng CH",
+              "Thaker S",
+              "Bardia A",
+              "Karlan B",
+              "Hendrickson AW",
+              "Konecny GE"
+            ],
+            "published_date": "2026 Aug",
+            "source": "pubmed",
+            "source_id": "PMID:42621866",
+            "doi": "doi: 10.1016/j.gore.2026.102183",
+            "url": "https://pubmed.ncbi.nlm.nih.gov/42621866/",
+            "journal": "Gynecol Oncol Rep",
+            "document_type": "pubmed",
+            "metadata": {
+              "pmid": "42621866",
+              "query": "trastuzumab HER2"
+            }
+          },
+          "parsed": {
+            "text": "Silverstein J",
+            "sentences": [
+              "Silverstein J"
+            ],
+            "paragraphs": [
+              "Silverstein J"
+            ],
+            "token_count": 2
+          },
+          "normalized_text": "Silverstein J",
+          "entities": [],
+          "structured_entities": [],
+          "relationships": [
+            {
+              "subject": "PMID:42621866",
+              "predicate": "reports",
+              "object": "Real-world clinical outcomes of Trastuzumab Deruxtecan in HER2-expressing ovarian and endometrial Cancer.",
+              "subject_label": "publication",
+              "object_label": "finding",
+              "confidence": 0.95,
+              "evidence": "Document primary title finding.",
+              "source_document": {
+                "source": "pubmed",
+                "source_id": "PMID:42621866",
+                "url": "https://pubmed.ncbi.nlm.nih.gov/42621866/"
+              }
+            }
+          ],
+          "summary": "Real-world clinical outcomes of Trastuzumab Deruxtecan in HER2-expressing ovarian and endometrial Cancer.. Silverstein J",
+          "structured_summary": {
+            "summary_type": "extractive_fallback",
+            "concise_summary": "Real-world clinical outcomes of Trastuzumab Deruxtecan in HER2-expressing ovarian and endometrial Cancer.. Silverstein J",
+            "llm_used": false
+          },
+          "evidence_ranking": {
+            "score": 0.84,
+            "tier": "Medium",
+            "breakdown": {
+              "source_weight": 0.9,
+              "publication_type_score": 0.7,
+              "recency_score": 1.0,
+              "peer_review_score": 1.0,
+              "citation_score": 0.5
+            },
+            "peer_reviewed": true,
+            "citation_count": 0
+          },
+          "evidence": [
+            {
+              "entity": "literature_document",
+              "score": 0.84
+            }
+          ],
+          "chunks": [
+            {
+              "chunk_id": "PMID:42621866:0",
+              "chunk_index": 0,
+              "text": "Silverstein J",
+              "metadata": {
+                "document_id": "PMID:42621866",
+                "source_type": "pubmed",
+                "source_id": "PMID:42621866",
+                "title": "Real-world clinical outcomes of Trastuzumab Deruxtecan in HER2-expressing ovarian and endometrial Cancer.",
+                "entity_ids": [],
+                "entity_types": [],
+                "organization_id": null,
+                "workspace_id": null,
+                "project_id": null,
+                "version": 1,
+                "created_at": "2026-08-24T06:11:49.836944+00:00",
+                "updated_at": "2026-08-24T06:11:49.836944+00:00",
+                "provenance": {
+                  "source": "pubmed",
+                  "url": "https://pubmed.ncbi.nlm.nih.gov/42621866/",
+                  "doi": "doi: 10.1016/j.gore.2026.102183"
+                },
+                "citation": {
+                  "title": "Real-world clinical outcomes of Trastuzumab Deruxtecan in HER2-expressing ovarian and endometrial Cancer.",
+                  "doi": "doi: 10.1016/j.gore.2026.102183",
+                  "url": "https://pubmed.ncbi.nlm.nih.gov/42621866/"
+                }
+              }
+            }
+          ],
+          "kg_entity_id_map": {}
+        }
+      ],
+      "duplicates": [],
+      "kg_updates": [
+        {
+          "success": false,
+          "error": "KG service unavailable: [Errno 11001] getaddrinfo failed",
+          "retry_eligible": true,
+          "status": "failed"
+        },
+        {
+          "success": true,
+          "updated_nodes": 0,
+          "updated_edges": 0,
+          "status": "no_op",
+          "entity_id_map": {}
+        },
+        {
+          "success": false,
+          "error": "KG service unavailable: [Errno 11001] getaddrinfo failed",
+          "retry_eligible": true,
+          "status": "failed"
+        },
+        {
+          "success": true,
+          "updated_nodes": 0,
+          "updated_edges": 0,
+          "status": "no_op",
+          "entity_id_map": {}
+        },
+        {
+          "success": true,
+          "updated_nodes": 0,
+          "updated_edges": 0,
+          "status": "no_op",
+          "entity_id_map": {}
+        }
+      ],
+      "wiki_updates": [
+        {
+          "success": true,
+          "method": "okf_volume",
+          "updated_concepts": 1,
+          "status": "completed"
+        },
+        {
+          "success": true,
+          "method": "okf_volume",
+          "updated_concepts": 0,
+          "status": "completed"
+        },
+        {
+          "success": true,
+          "method": "okf_volume",
+          "updated_concepts": 1,
+          "status": "completed"
+        },
+        {
+          "success": true,
+          "method": "okf_volume",
+          "updated_concepts": 0,
+          "status": "completed"
+        },
+        {
+          "success": true,
+          "method": "okf_volume",
+          "updated_concepts": 0,
+          "status": "completed"
+        }
+      ],
+      "status": "completed",
+      "search_handoffs": [
+        {
+          "document_id": "PMID:42632995",
+          "status": "failed",
+          "error": "Failed to submit embeddings to search service: [Errno 11001] getaddrinfo failed"
+        },
+        {
+          "document_id": "PMID:42629540",
+          "status": "failed",
+          "error": "Failed to submit embeddings to search service: [Errno 11001] getaddrinfo failed"
+        },
+        {
+          "document_id": "PMID:42627360",
+          "status": "failed",
+          "error": "Failed to submit embeddings to search service: [Errno 11001] getaddrinfo failed"
+        },
+        {
+          "document_id": "PMID:42623567",
+          "status": "failed",
+          "error": "Failed to submit embeddings to search service: [Errno 11001] getaddrinfo failed"
+        },
+        {
+          "document_id": "PMID:42621866",
+          "status": "failed",
+          "error": "Failed to submit embeddings to search service: [Errno 11001] getaddrinfo failed"
+        }
+      ]
+    }
+  }
+]
