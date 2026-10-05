@@ -30,7 +30,7 @@
     "start": "node dist/index.js",
     "lint": "eslint src --max-warnings 0",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "vitest run --fileParallelism=false",
     "clean": "rimraf dist bin .turbo",
     "neo4j:init": "tsx src/neo4jSeed.ts -- --init-schema",
     "neo4j:seed": "tsx src/neo4jSeed.ts -- --seed",

@@ -1,12 +1,20 @@
-# Concept: her2
+# Concept: HER2
 - **Category**: genes
-- **Last Updated**: 2026-08-09T15:32:27.801230+00:00
-- **Source**: pubmed (pubmed-33880)
+- **Entity ID**: 0564dde2-cbb8-572f-b6da-07042295e339
+- **Version**: 84
+- **Last Updated**: 2026-10-04T11:40:54.875090+00:00
+- **Source**: pubmed (PMID123)
 
 ## Primary Summary
-Literature document retrieved for query: HER2 breast cancer
+HER2 study. HER2 study abstract
 
 ## Literature Evidence
-- **Title**: PubMed result for: HER2 breast cancer
-- **DOI**: 10.1016/j.pubmed.3880
-- **URL**: https://pubmed.ncbi.nlm.nih.gov
+- **Title**: HER2 study
+- **DOI**: None
+- **URL**: None
+
+## Relationships
+No relationships recorded.
+
+## Supporting Evidence
+- HER2 (category: genes, score: 0.8)

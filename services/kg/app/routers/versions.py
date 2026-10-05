@@ -1,4 +1,5 @@
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
+from app.core.canonical_security import CanonicalPrincipal, get_canonical_principal
 from app.schemas.versions import VersionListResponse
 from app.services.version_service import VersionNotFoundError, VersionService
 from app.utils.logging import get_logger
@@ -7,9 +8,9 @@ logger = get_logger(__name__)
 router = APIRouter(prefix="/versions", tags=["Versioning & Rollback"])
 
 @router.get("", response_model=VersionListResponse)
-async def list_versions():
+async def list_versions(principal: CanonicalPrincipal = Depends(get_canonical_principal)):
     try:
-        versions = await VersionService.list_versions()
+        versions = await VersionService.list_versions(principal)
         return VersionListResponse(versions=versions)
     except Exception as e:
         logger.error(f"Failed to list graph versions: {str(e)}", exc_info=True)
@@ -19,9 +20,9 @@ async def list_versions():
         )
 
 @router.post("/rollback/{version}", status_code=status.HTTP_200_OK)
-async def rollback_to_version(version: int):
+async def rollback_to_version(version: int, principal: CanonicalPrincipal = Depends(get_canonical_principal)):
     try:
-        count = await VersionService.rollback_to_version(version)
+        count = await VersionService.rollback_to_version(version, principal)
         return {
             "status": "success",
             "message": f"Graph successfully rolled back to version {version}. Marked {count} newer versions as rolled back.",

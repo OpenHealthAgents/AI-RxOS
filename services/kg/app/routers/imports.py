@@ -1,5 +1,6 @@
 from typing import Optional
-from fastapi import APIRouter, HTTPException, UploadFile, File, Form, status
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status
+from app.core.canonical_security import CanonicalPrincipal, get_canonical_principal
 from app.schemas.imports import ImportJSONRequest, ImportResponse
 from app.services.import_service import ImportService
 from app.utils.logging import get_logger
@@ -8,9 +9,9 @@ logger = get_logger(__name__)
 router = APIRouter(prefix="/import", tags=["Bulk Import"])
 
 @router.post("/json", response_model=ImportResponse, status_code=status.HTTP_201_CREATED)
-async def import_json(req: ImportJSONRequest):
+async def import_json(req: ImportJSONRequest, principal: CanonicalPrincipal = Depends(get_canonical_principal)):
     try:
-        return await ImportService.import_json(req)
+        return await ImportService.import_json(req, principal)
     except Exception as e:
         logger.error(f"Bulk JSON import failed: {str(e)}", exc_info=True)
         raise HTTPException(
@@ -22,7 +23,8 @@ async def import_json(req: ImportJSONRequest):
 async def import_csv(
     nodes_file: Optional[UploadFile] = File(None),
     relationships_file: Optional[UploadFile] = File(None),
-    description: Optional[str] = Form(None)
+    description: Optional[str] = Form(None),
+    principal: CanonicalPrincipal = Depends(get_canonical_principal)
 ):
     if not nodes_file and not relationships_file:
         raise HTTPException(
@@ -42,7 +44,8 @@ async def import_csv(
         return await ImportService.import_csv(
             nodes_csv_content=nodes_content,
             relationships_csv_content=relationships_content,
-            description=description
+            description=description,
+            principal=principal
         )
     except Exception as e:
         logger.error(f"Bulk CSV import failed: {str(e)}", exc_info=True)

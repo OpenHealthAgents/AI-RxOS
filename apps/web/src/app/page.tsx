@@ -5,7 +5,7 @@ export default function HomePage() {
     <main className="mx-auto flex min-h-screen max-w-3xl flex-col gap-6 px-6 py-16">
       <div className="flex items-center gap-3">
         <h1 className="text-3xl font-bold">AI-RxOS</h1>
-        <Badge tone="success">operational</Badge>
+        <Badge variant="default">operational</Badge>
       </div>
       <p className="text-slate-400">
         AI-native drug discovery workspace — literature intelligence, knowledge graph,

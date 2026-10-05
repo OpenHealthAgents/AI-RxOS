@@ -39,6 +39,157 @@ export const GraphEntitySchema = z.object({
 });
 export type GraphEntity = z.infer<typeof GraphEntitySchema>;
 
+export const CanonicalEntityTypeSchema = z.enum([
+  "therapeutic_asset",
+  "target",
+  "disease",
+  "indication",
+  "biomarker",
+  "company",
+  "clinical_trial",
+  "publication",
+  "patent",
+  "regulatory_event",
+  "mechanism",
+  "combination",
+  "resistance_mechanism",
+]);
+export type CanonicalEntityType = z.infer<typeof CanonicalEntityTypeSchema>;
+
+export const TherapeuticModalitySchema = z.enum([
+  "SMALL_MOLECULE",
+  "ANTIBODY",
+  "ADC",
+  "PROTEIN",
+  "PEPTIDE",
+  "CELL_THERAPY",
+  "GENE_THERAPY",
+  "RNA_THERAPY",
+  "RADIOPHARMACEUTICAL",
+  "VACCINE",
+  "OTHER",
+]);
+export type TherapeuticModality = z.infer<typeof TherapeuticModalitySchema>;
+
+export const CanonicalSourceRecordSchema = z.object({
+  namespace: z.string().min(1),
+  external_id: z.string().min(1),
+  source_type: z.enum([
+    "publication",
+    "trial_registry",
+    "patent_registry",
+    "regulatory_authority",
+    "company",
+    "database",
+    "manual",
+    "demo",
+  ]),
+  source_url: z.string().url().nullable().optional(),
+  published_at: z.string().datetime().nullable().optional(),
+  source_updated_at: z.string().datetime().nullable().optional(),
+  observed_at: z.string().datetime().nullable().optional(),
+  raw_payload_ref: z.string().nullable().optional(),
+  content_hash: z.string().nullable().optional(),
+  provenance: z.record(z.string(), z.unknown()).default({}),
+});
+export type CanonicalSourceRecord = z.infer<typeof CanonicalSourceRecordSchema>;
+
+export const CanonicalIdentifierSchema = z.object({
+  namespace: z.string().min(1),
+  identifier_type: z.string().min(1),
+  value: z.string().min(1),
+  source_record: CanonicalSourceRecordSchema,
+});
+export type CanonicalIdentifier = z.infer<typeof CanonicalIdentifierSchema>;
+
+export const CanonicalAliasSchema = z.object({
+  value: z.string().min(1),
+  alias_type: z.enum(["development", "generic", "brand", "alias", "synonym"]),
+  verification_state: z.enum(["unreviewed", "verified", "rejected"]).default("unreviewed"),
+  source_record: CanonicalSourceRecordSchema,
+});
+export type CanonicalAlias = z.infer<typeof CanonicalAliasSchema>;
+
+export const CanonicalEntitySchema = z.object({
+  id: z.string().uuid(),
+  entity_type: CanonicalEntityTypeSchema,
+  preferred_name: z.string(),
+  normalized_name: z.string(),
+  description: z.string().nullable().optional(),
+  modality: TherapeuticModalitySchema.nullable().optional(),
+  lifecycle_status: z.string().nullable().optional(),
+  visibility: z.enum(["global", "tenant"]),
+  organization_id: z.string().uuid().nullable().optional(),
+  attributes: z.record(z.string(), z.unknown()).default({}),
+  created_source_record_id: z.string().uuid().nullable().optional(),
+  identifiers: z.array(z.record(z.string(), z.unknown())).default([]),
+  aliases: z.array(z.record(z.string(), z.unknown())).default([]),
+  created_at: z.string().datetime(),
+  updated_at: z.string().datetime(),
+});
+export type CanonicalEntity = z.infer<typeof CanonicalEntitySchema>;
+
+export const CanonicalEntityCreateSchema = z.object({
+  entity_type: CanonicalEntityTypeSchema,
+  preferred_name: z.string().min(1),
+  description: z.string().nullable().optional(),
+  modality: TherapeuticModalitySchema.nullable().optional(),
+  lifecycle_status: z.string().nullable().optional(),
+  visibility: z.enum(["global", "tenant"]).default("global"),
+  attributes: z.record(z.string(), z.unknown()).default({}),
+  source_record: CanonicalSourceRecordSchema,
+  identifiers: z.array(CanonicalIdentifierSchema).default([]),
+  aliases: z.array(CanonicalAliasSchema).default([]),
+});
+export type CanonicalEntityCreate = z.infer<typeof CanonicalEntityCreateSchema>;
+
+export const CanonicalRelationshipCreateSchema = z.object({
+  subject_entity_id: z.string().uuid(),
+  predicate: z.string().regex(/^[A-Z][A-Z0-9_]{0,63}$/),
+  object_entity_id: z.string().uuid(),
+  visibility: z.enum(["global", "tenant"]).default("global"),
+  attributes: z.record(z.string(), z.unknown()).default({}),
+  source_record: CanonicalSourceRecordSchema,
+  property_name: z.string().min(1).default("relationship_observed"),
+  observation_value: z.unknown(),
+  observation_kind: z.enum(["source_fact", "normalized_observation", "hypothesis"]).default("normalized_observation"),
+  verification_state: z.enum(["unreviewed", "verified", "rejected"]).default("unreviewed"),
+  confidence: z.number().min(0).max(1).nullable().optional(),
+  valid_from: z.string().datetime().nullable().optional(),
+  valid_to: z.string().datetime().nullable().optional(),
+});
+export type CanonicalRelationshipCreate = z.infer<typeof CanonicalRelationshipCreateSchema>;
+
+export const CanonicalObservationSchema = z.object({
+  id: z.string().uuid(),
+  entity_id: z.string().uuid(),
+  relationship_id: z.string().uuid().nullable().optional(),
+  visibility: z.enum(["global", "tenant"]),
+  property_name: z.string(),
+  observation_kind: z.enum(["source_fact", "normalized_observation", "hypothesis"]),
+  value: z.unknown(),
+  verification_state: z.enum(["unreviewed", "verified", "rejected"]),
+  confidence: z.number().min(0).max(1).nullable().optional(),
+  valid_from: z.string().datetime().nullable().optional(),
+  valid_to: z.string().datetime().nullable().optional(),
+  published_at: z.string().datetime().nullable().optional(),
+  observed_at: z.string().datetime().nullable().optional(),
+  source_updated_at: z.string().datetime().nullable().optional(),
+  ingested_at: z.string().datetime(),
+  normalizer_version: z.string().nullable().optional(),
+  supersedes_observation_id: z.string().uuid().nullable().optional(),
+  manually_verified_by: z.string().uuid().nullable().optional(),
+  manually_verified_at: z.string().datetime().nullable().optional(),
+});
+export type CanonicalObservation = z.infer<typeof CanonicalObservationSchema>;
+
+export const CanonicalResolutionSchema = z.object({
+  status: z.enum(["resolved", "ambiguous", "unresolved"]),
+  entity: CanonicalEntitySchema.nullable().optional(),
+  candidates: z.array(CanonicalEntitySchema).default([]),
+});
+export type CanonicalResolution = z.infer<typeof CanonicalResolutionSchema>;
+
 export const MoleculeSchema = z.object({
   id: z.string().uuid(),
   smiles: z.string(),

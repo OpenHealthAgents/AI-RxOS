@@ -17,6 +17,10 @@ func (h *SearchHandler) StreamQuery(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"code": "stream_unsupported", "message": "streaming not supported by client connection"})
 		return
 	}
+	tenant, ok := requireRequestScope(w, r)
+	if !ok {
+		return
+	}
 
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -41,7 +45,7 @@ func (h *SearchHandler) StreamQuery(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sendEvent("progress", map[string]string{"step": "keyword_search", "message": "Executing OpenSearch BM25 lexical query..."})
-	hits, err := h.OpenSearch.Query(r.Context(), q, limit)
+	hits, err := h.OpenSearch.QueryForTenant(r.Context(), q, limit, tenant)
 	if err != nil {
 		sendEvent("error", map[string]string{"message": err.Error()})
 		return
@@ -72,6 +76,10 @@ func (h *SearchHandler) StreamHybrid(w http.ResponseWriter, r *http.Request) {
 	if req.Limit <= 0 {
 		req.Limit = 20
 	}
+	tenant, ok := requireRequestScope(w, r)
+	if !ok {
+		return
+	}
 
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -91,28 +99,22 @@ func (h *SearchHandler) StreamHybrid(w http.ResponseWriter, r *http.Request) {
 	// Step 1: OpenSearch BM25 Keyword Query
 	if req.Query != "" {
 		sendEvent("progress", map[string]string{"step": "keyword_search", "message": "Executing OpenSearch BM25 lexical search..."})
-		if hits, err := h.OpenSearch.Query(r.Context(), req.Query, req.Limit); err == nil {
+		if hits, err := h.OpenSearch.QueryForTenant(r.Context(), req.Query, req.Limit, tenant); err == nil {
 			bm25Hits = hits
 			sendEvent("keyword_hits", map[string]any{"items": bm25Hits, "count": len(bm25Hits)})
 		}
 	}
 
 	// Step 2: Dense Semantic Vector & QMD Concept Search
-	if len(req.Embedding) > 0 && h.Vectors != nil {
+	if len(req.Embedding) > 0 && h.OpenSearch != nil {
 		sendEvent("progress", map[string]string{"step": "semantic_search", "message": "Executing dense semantic & QMD concept vector search..."})
-		source := h.VectorSource
-		if source == "" {
-			source = search.ProviderLLMWiki
+		hits, err := h.OpenSearch.SemanticSearchForTenant(r.Context(), req.Embedding, req.Limit, tenant)
+		if err != nil {
+			sendEvent("error", map[string]string{"code": "semantic_search_failed", "message": err.Error()})
+			return
 		}
-		if hits, err := h.Vectors.SimilaritySearchForTenant(r.Context(), req.Embedding, req.Limit, req.tenant()); err == nil {
-			for i := range hits {
-				if hits[i].Source == "" {
-					hits[i].Source = source
-				}
-			}
-			vectorHits = hits
-			sendEvent("semantic_hits", map[string]any{"items": vectorHits, "count": len(vectorHits)})
-		}
+		vectorHits = hits
+		sendEvent("semantic_hits", map[string]any{"items": vectorHits, "count": len(vectorHits)})
 	}
 
 	// Step 3: Knowledge Graph & Citation Enrichment
@@ -122,8 +124,15 @@ func (h *SearchHandler) StreamHybrid(w http.ResponseWriter, r *http.Request) {
 		vectorHits = h.Citations.EnrichHits(r.Context(), vectorHits)
 	}
 	if h.Graph != nil {
-		bm25Hits = h.Graph.EnrichHits(r.Context(), req.Query, bm25Hits)
-		vectorHits = h.Graph.EnrichHits(r.Context(), req.Query, vectorHits)
+		var err error
+		bm25Hits, err = h.Graph.EnrichHits(r.Context(), req.Query, bm25Hits, r.Header.Get("Authorization"))
+		if err == nil {
+			vectorHits, err = h.Graph.EnrichHits(r.Context(), req.Query, vectorHits, r.Header.Get("Authorization"))
+		}
+		if err != nil {
+			sendEvent("error", map[string]string{"code": "graph_enrichment_failed", "message": err.Error()})
+			return
+		}
 	}
 
 	// Step 4: Reciprocal Rank Fusion (RRF)

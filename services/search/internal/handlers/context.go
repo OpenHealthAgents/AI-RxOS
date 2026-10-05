@@ -25,6 +25,7 @@ type contextRequest struct {
 	ProjectID      string    `json:"project_id,omitempty"`
 	ConversationID string    `json:"conversation_id,omitempty"`
 	AgentID        string    `json:"agent_id,omitempty"`
+	AsOf           string    `json:"as_of,omitempty"`
 	// MaxSnippetChars caps each returned snippet's length (default 320).
 	// The point of this endpoint is compact context, not full documents.
 	MaxSnippetChars int `json:"max_snippet_chars,omitempty"`
@@ -59,6 +60,10 @@ func (h *SearchHandler) Context(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"code": "missing_query", "message": "query or embedding is required"})
 		return
 	}
+	tenant, ok := requireRequestScope(w, r)
+	if !ok {
+		return
+	}
 	topK := req.TopK
 	if topK <= 0 {
 		topK = 10
@@ -67,34 +72,35 @@ func (h *SearchHandler) Context(w http.ResponseWriter, r *http.Request) {
 	if maxSnippet <= 0 {
 		maxSnippet = 320
 	}
+	asOf, err := parseAsOf(req.AsOf)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"code": "invalid_as_of", "message": "as_of must be an RFC3339 timestamp"})
+		return
+	}
 
 	var bm25Hits []search.Hit
 	var vectorHits []search.Hit
-
-	if req.Query != "" && h.OpenSearch != nil {
-		if hits, err := h.OpenSearch.Query(r.Context(), req.Query, topK*2); err == nil {
-			for i := range hits {
-				if hits[i].Source == "" {
-					hits[i].Source = "opensearch"
-				}
-			}
-			bm25Hits = hits
-		}
+	queryOptions := search.QueryOptions{
+		Query: req.Query, Page: 1, PageSize: topK * 2,
+		EntityTypes: req.EntityFilters, Sources: req.SourceFilters, AsOf: asOf,
 	}
 
-	if len(req.Embedding) > 0 && h.Vectors != nil {
-		source := h.VectorSource
-		if source == "" {
-			source = search.ProviderLLMWiki
+	if req.Query != "" && h.OpenSearch != nil {
+		result, err := h.OpenSearch.QueryWithOptionsForTenant(r.Context(), queryOptions, tenant)
+		if err != nil {
+			writeJSON(w, http.StatusBadGateway, map[string]string{"code": "keyword_search_failed", "message": err.Error()})
+			return
 		}
-		if hits, err := h.Vectors.SimilaritySearchForTenant(r.Context(), req.Embedding, topK*2, req.tenant()); err == nil {
-			for i := range hits {
-				if hits[i].Source == "" {
-					hits[i].Source = source
-				}
-			}
-			vectorHits = hits
+		bm25Hits = result.Hits
+	}
+
+	if len(req.Embedding) > 0 && h.OpenSearch != nil {
+		hits, err := h.OpenSearch.SemanticSearchWithOptionsForTenant(r.Context(), req.Embedding, queryOptions, tenant)
+		if err != nil {
+			writeJSON(w, http.StatusBadGateway, map[string]string{"code": "semantic_search_failed", "message": err.Error()})
+			return
 		}
+		vectorHits = hits
 	}
 
 	if h.Citations != nil {
@@ -102,8 +108,15 @@ func (h *SearchHandler) Context(w http.ResponseWriter, r *http.Request) {
 		vectorHits = h.Citations.EnrichHits(r.Context(), vectorHits)
 	}
 	if h.Graph != nil {
-		bm25Hits = h.Graph.EnrichHits(r.Context(), req.Query, bm25Hits)
-		vectorHits = h.Graph.EnrichHits(r.Context(), req.Query, vectorHits)
+		var err error
+		bm25Hits, err = h.Graph.EnrichHits(r.Context(), req.Query, bm25Hits, r.Header.Get("Authorization"))
+		if err == nil {
+			vectorHits, err = h.Graph.EnrichHits(r.Context(), req.Query, vectorHits, r.Header.Get("Authorization"))
+		}
+		if err != nil {
+			writeJSON(w, http.StatusBadGateway, map[string]string{"code": "graph_enrichment_failed", "message": err.Error()})
+			return
+		}
 	}
 
 	ranker := h.Ranker
@@ -111,6 +124,13 @@ func (h *SearchHandler) Context(w http.ResponseWriter, r *http.Request) {
 		ranker = search.NewResultRanker(60, 0.35, 0.35, 0.15, 0.15)
 	}
 	ranked := ranker.RankRRF(topK*2, bm25Hits, vectorHits)
+	if h.Canonical != nil {
+		ranked, err = h.Canonical.EnrichHits(r.Context(), ranked, r.Header.Get("Authorization"), asOf)
+		if err != nil {
+			writeJSON(w, http.StatusBadGateway, map[string]string{"code": "canonical_context_failed", "message": err.Error()})
+			return
+		}
+	}
 	ranked = applyContextFilters(ranked, req.SourceFilters, req.EntityFilters)
 	if len(ranked) > topK {
 		ranked = ranked[:topK]

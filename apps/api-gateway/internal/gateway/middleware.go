@@ -128,7 +128,29 @@ func jwtAuth(secret string, publicPaths []string) func(http.Handler) http.Handle
 				return
 			}
 
+			// Strip caller-controlled scope headers before forwarding claims-derived
+			// identity to tenant-aware downstream services.
+			r.Header.Del("X-Authenticated-Organization-ID")
+			r.Header.Del("X-Authenticated-Workspace-ID")
+			if claims, ok := token.Claims.(jwt.MapClaims); ok {
+				if organization, ok := claimString(claims, "organization_id", "organizationId"); ok {
+					r.Header.Set("X-Authenticated-Organization-ID", organization)
+				}
+				if workspace, ok := claimString(claims, "workspace_id", "workspaceId"); ok {
+					r.Header.Set("X-Authenticated-Workspace-ID", workspace)
+				}
+			}
+
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+func claimString(claims jwt.MapClaims, names ...string) (string, bool) {
+	for _, name := range names {
+		if value, ok := claims[name].(string); ok && value != "" {
+			return value, true
+		}
+	}
+	return "", false
 }

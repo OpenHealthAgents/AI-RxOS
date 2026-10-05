@@ -1,20 +1,39 @@
 from uuid import UUID
+import json
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from app.core.security import get_current_user
+from app.core.security import get_tenant_context
 from app.database.postgres import postgres_manager
+from app.knowledge.models import TenantContext
 from app.schemas import Paper
 
 router = APIRouter(prefix="/papers", tags=["Papers"])
 
-auth_dependency = Depends(get_current_user)
+
+def _decode_json_fields(row: dict[str, object]) -> dict[str, object]:
+    for key in ("authors", "source_metadata", "extracted_entities", "extracted_relationships"):
+        value = row.get(key)
+        if isinstance(value, str):
+            row[key] = json.loads(value)
+        elif value is None:
+            row[key] = [] if key in {"authors", "extracted_entities", "extracted_relationships"} else {}
+    return row
+
+
+def _scoped_acquire(organization_id: str | None):
+    return (
+        postgres_manager.acquire(organization_id)
+        if organization_id is not None
+        else postgres_manager.acquire()
+    )
 
 
 @router.get("", response_model=dict)
 async def list_papers(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
+    tenant: TenantContext = Depends(get_tenant_context),
 ) -> dict[str, object]:
     offset = (page - 1) * page_size
     if postgres_manager.pool is None:
@@ -27,10 +46,13 @@ async def list_papers(
             "pageSize": page_size,
         }
 
-    async with postgres_manager.acquire() as connection:
+    async with _scoped_acquire(tenant.organization_id) as connection:
         rows = await connection.fetch(
             """
-            SELECT id::text, title, source, doi, published_at, citation_count
+            SELECT id::text, title, source, doi, published_at, citation_count, pmid, pmcid,
+                abstract, authors, journal, source_id, publication_date_source, retrieved_at,
+                ingested_at, source_metadata, extracted_entities, extracted_relationships,
+                canonical_entity_id::text, reconciliation_status
             FROM literature_papers
             ORDER BY created_at DESC
             LIMIT $1 OFFSET $2
@@ -41,7 +63,7 @@ async def list_papers(
         total = await connection.fetchval("SELECT COUNT(*) FROM literature_papers")
 
     return {
-        "items": [dict(row) for row in rows],
+        "items": [_decode_json_fields(dict(row)) for row in rows],
         "total": total,
         "page": page,
         "pageSize": page_size,
@@ -51,7 +73,7 @@ async def list_papers(
 @router.get("/{paper_id}", response_model=Paper)
 async def get_paper(
     paper_id: UUID,
-    auth_payload: dict[str, str] = auth_dependency,
+    tenant: TenantContext = Depends(get_tenant_context),
 ) -> Paper:
     if postgres_manager.pool is None:
         from app.main import _PAPERS
@@ -75,10 +97,13 @@ async def get_paper(
             citation_count=paper.get("citationCount") or 0,
         )
 
-    async with postgres_manager.acquire() as connection:
+    async with _scoped_acquire(tenant.organization_id) as connection:
         row = await connection.fetchrow(
             """
-            SELECT id::text, title, source, doi, published_at, citation_count
+            SELECT id::text, title, source, doi, published_at, citation_count, pmid, pmcid,
+                abstract, authors, journal, source_id, publication_date_source, retrieved_at,
+                ingested_at, source_metadata, extracted_entities, extracted_relationships,
+                canonical_entity_id::text, reconciliation_status
             FROM literature_papers
             WHERE id = $1
             """,
@@ -88,4 +113,4 @@ async def get_paper(
     if row is None:
         raise HTTPException(status_code=404, detail="paper not found")
 
-    return Paper(**dict(row))
+    return Paper(**_decode_json_fields(dict(row)))

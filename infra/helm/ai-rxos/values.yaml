@@ -61,6 +61,9 @@ postgresql:
     repository: pgvector/pgvector
     tag: pg16
   primary:
+    extraEnvVarsSecret: ai-rxos-secrets
+    initdb:
+      scriptsConfigMap: ai-rxos-postgres-init
     persistence:
       size: 20Gi
       storageClass: ""
@@ -106,6 +109,7 @@ config:
   postgresPort: "5432"
   postgresDb: ai_rxos
   postgresUser: ai_rxos
+  postgresAppUser: ai_rxos_app
   neo4jUri: "bolt://ai-rxos-neo4j:7687"
   neo4jUser: neo4j
   redisUrl: "redis://ai-rxos-redis-master:6379/0"
@@ -119,11 +123,9 @@ config:
   opensearchUrl: "http://ai-rxos-opensearch-cluster-master:9200"
   opensearchUser: admin
   corsAllowOrigin: "https://app.ai-rxos.local"
-  # services/search retrieval provider selection (see
-  # services/search/internal/search/provider.go). pgvector is the default
-  # and only implemented backend; llm_wiki/google_okf are placeholders.
-  searchRetrievalProvider: "pgvector"
-  llmWikiUrl: ""
+  # services/search retrieval provider selection.
+  searchRetrievalProvider: "llm_wiki"
+  llmWikiUrl: "http://ai-rxos-llm-wiki:8092"
   googleOkfUrl: ""
 
 # Secrets: for dev this seeds a Kubernetes Secret directly from values
@@ -141,10 +143,12 @@ externalSecret:
 
 secrets:
   postgresPassword: changeme
+  postgresAppPassword: changeme_app
   neo4jPassword: changeme_neo4j
   redisPassword: ""
   opensearchPassword: AiRxOS#Search9K
   jwtSecret: change_this_dev_secret_before_deploying
+  searchInternalToken: ""
   executionPayloadKey: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
   # services/auth-adapter (BetterAuth scaffold) — see
   # services/auth-adapter/README.md.

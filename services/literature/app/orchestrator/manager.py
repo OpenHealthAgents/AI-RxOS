@@ -45,6 +45,7 @@ class IngestionJob:
     job_id: str
     source: str
     query: str
+    organization_id: str | None = None
     status: JobStatus = JobStatus.QUEUED
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     started_at: datetime | None = None
@@ -58,6 +59,8 @@ class IngestionJob:
     cancel_requested: bool = False
     dead_letter_count: int = 0
     dead_letter_items: list[dict[str, Any]] = field(default_factory=list)
+    checkpoint: dict[str, Any] = field(default_factory=dict)
+    auth_context: dict[str, Any] = field(default_factory=dict)
     worker_task: asyncio.Task | None = None
 
 
@@ -80,13 +83,34 @@ class IngestionOrchestrator:
             "ingestion.jobs_scheduled": 0,
             "ingestion.jobs_rescheduled": 0,
         }
+        self._recovered_persisted_jobs = False
 
     async def start(self) -> None:
         if self._worker is None or self._worker.done():
+            if postgres_manager.pool is not None and not self._recovered_persisted_jobs:
+                await self._recover_persisted_jobs()
             self._stop_event.clear()
             self._worker = asyncio.create_task(self._worker_loop())
             self._scheduler = asyncio.create_task(self._scheduler_loop())
             logger.info("Ingestion orchestrator worker started")
+
+    async def _recover_persisted_jobs(self) -> None:
+        async with postgres_manager.acquire(system_scope=True) as connection:
+            rows = await connection.fetch(
+                """SELECT id::text, source, query, status, created_at, started_at, completed_at,
+                    schedule, next_run_at, documents_total, documents_processed, documents_failed,
+                    retry_count, backoff_until, error_message, dead_letter_count, dead_letter_items,
+                    organization_id, checkpoint, auth_context
+                FROM literature_ingestion_jobs WHERE status IN ('queued', 'running')
+                ORDER BY created_at"""
+            )
+        self._recovered_persisted_jobs = True
+        for row in rows:
+            job = await self._load_job_from_row(row)
+            if job.status == JobStatus.RUNNING:
+                job.status = JobStatus.QUEUED
+                job.error_message = "worker restarted; resuming from persisted checkpoint"
+            self.enqueue(job)
 
     async def stop(self) -> None:
         self._stop_event.set()
@@ -144,13 +168,17 @@ class IngestionOrchestrator:
                 await asyncio.sleep(3)
                 now = datetime.now(timezone.utc)
                 async with postgres_manager.acquire() as connection:
+                    await connection.execute(
+                        "SELECT set_config('app.literature_system_scope', 'true', true)"
+                    )
                     rows = await connection.fetch(
                         """
                         SELECT id::text, source, query, status, created_at,
                             started_at, completed_at, schedule, next_run_at,
                             documents_total, documents_processed,
                             documents_failed, retry_count, backoff_until,
-                            error_message, dead_letter_count, dead_letter_items
+                            error_message, dead_letter_count, dead_letter_items,
+                            organization_id, checkpoint, auth_context
                         FROM literature_ingestion_jobs
                         WHERE status = $1
                           AND next_run_at IS NOT NULL
@@ -171,15 +199,23 @@ class IngestionOrchestrator:
             except Exception:
                 logger.exception("Scheduler loop failed")
 
-    async def _load_job_from_db(self, job_id: str) -> IngestionJob | None:
-        async with postgres_manager.acquire() as connection:
+    async def _load_job_from_db(
+        self, job_id: str, organization_id: str | None = None
+    ) -> IngestionJob | None:
+        acquire = (
+            postgres_manager.acquire(organization_id)
+            if organization_id is not None
+            else postgres_manager.acquire()
+        )
+        async with acquire as connection:
             row = await connection.fetchrow(
                 """
                 SELECT id::text, source, query, status, created_at,
                     started_at, completed_at, schedule, next_run_at,
                     documents_total, documents_processed,
                     documents_failed, retry_count, backoff_until,
-                    error_message, dead_letter_count, dead_letter_items
+                    error_message, dead_letter_count, dead_letter_items,
+                    organization_id, checkpoint, auth_context
                 FROM literature_ingestion_jobs
                 WHERE id = $1
                 """,
@@ -193,11 +229,18 @@ class IngestionOrchestrator:
         dead_letter_items = row["dead_letter_items"] or []
         if isinstance(dead_letter_items, str):
             dead_letter_items = json.loads(dead_letter_items)
+        checkpoint = row.get("checkpoint", {}) if hasattr(row, "get") else {}
+        auth_context = row.get("auth_context", {}) if hasattr(row, "get") else {}
+        if isinstance(checkpoint, str):
+            checkpoint = json.loads(checkpoint)
+        if isinstance(auth_context, str):
+            auth_context = json.loads(auth_context)
 
         return IngestionJob(
             job_id=row["id"],
             source=row["source"],
             query=row["query"],
+            organization_id=row.get("organization_id") if hasattr(row, "get") else None,
             status=JobStatus(row["status"]),
             created_at=row["created_at"],
             started_at=row["started_at"],
@@ -215,14 +258,18 @@ class IngestionOrchestrator:
             backoff_until=row["backoff_until"],
             dead_letter_count=row["dead_letter_count"],
             dead_letter_items=dead_letter_items,
+            checkpoint=checkpoint or {},
+            auth_context=auth_context or {},
         )
 
-    async def trigger_retry(self, job_id: str) -> None:
+    async def trigger_retry(self, job_id: str, organization_id: str | None = None) -> None:
         job = self._running_jobs.get(job_id)
         if job is None:
-            job = await self._load_job_from_db(job_id)
+            job = await self._load_job_from_db(job_id, organization_id)
         if job is None:
             raise ValueError("job not found")
+        if job.retry_count >= settings.ingestion_max_retries:
+            raise ValueError("job retry limit has been reached")
 
         job.retry_count += 1
         job.backoff_until = datetime.now(timezone.utc) + timedelta(
@@ -238,10 +285,10 @@ class IngestionOrchestrator:
             extra={"job_id": job.job_id, "retry_count": job.retry_count},
         )
 
-    async def cancel(self, job_id: str) -> None:
+    async def cancel(self, job_id: str, organization_id: str | None = None) -> None:
         job = self._running_jobs.get(job_id)
         if job is None:
-            job = await self._load_job_from_db(job_id)
+            job = await self._load_job_from_db(job_id, organization_id)
         if job is None:
             raise ValueError("job not found")
 
@@ -278,7 +325,27 @@ class IngestionOrchestrator:
         await self._persist_job_state(job)
 
         try:
-            await self._simulate_ingestion(job)
+            if job.source == "pubmed":
+                from app.services.pubmed_ingestion import PubMedIngestionProcessor
+
+                processor = PubMedIngestionProcessor()
+                await processor.run(job, self._persist_job_state)
+            elif job.source == "clinicaltrials":
+                from app.services.clinicaltrials_ingestion import ClinicalTrialsIngestionProcessor
+
+                processor = ClinicalTrialsIngestionProcessor()
+            elif job.source == "regulatory":
+                from app.services.regulatory_ingestion import RegulatoryIngestionProcessor
+
+                processor = RegulatoryIngestionProcessor()
+                await processor.run(job, self._persist_job_state)
+            elif job.source == "patent":
+                from app.services.patent_ingestion import PatentIngestionProcessor
+
+                processor = PatentIngestionProcessor()
+                await processor.run(job, self._persist_job_state)
+            else:
+                await self._simulate_ingestion(job)
             if job.cancel_requested:
                 job.status = JobStatus.CANCELLED
                 self._metrics["ingestion.jobs_cancelled"] += 1
@@ -334,7 +401,12 @@ class IngestionOrchestrator:
                 raise RuntimeError("temporary ingestion error")
 
     async def _persist_job_state(self, job: IngestionJob) -> None:
-        async with postgres_manager.acquire() as connection:
+        acquire = (
+            postgres_manager.acquire(job.organization_id)
+            if job.organization_id is not None
+            else postgres_manager.acquire()
+        )
+        async with acquire as connection:
             await connection.execute(
                 """
                 UPDATE literature_ingestion_jobs
@@ -350,8 +422,9 @@ class IngestionOrchestrator:
                     retry_count = $10,
                     backoff_until = $11,
                     dead_letter_count = $12,
-                    dead_letter_items = $13
-                WHERE id = $14
+                    dead_letter_items = $13,
+                    checkpoint = $14::jsonb
+                WHERE id = $15 AND (organization_id IS NULL OR organization_id = $16::uuid)
                 """,
                 job.status.value,
                 job.started_at,
@@ -366,7 +439,9 @@ class IngestionOrchestrator:
                 job.backoff_until,
                 job.dead_letter_count,
                 json.dumps(job.dead_letter_items),
+                json.dumps(job.checkpoint),
                 job.job_id,
+                job.organization_id,
             )
 
     def get_job(self, job_id: str) -> IngestionJob | None:

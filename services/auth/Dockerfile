@@ -22,10 +22,15 @@ FROM base AS runtime
 WORKDIR /repo
 ENV NODE_ENV=production
 RUN addgroup -S rxos && adduser -S rxos -G rxos
-COPY --from=build /repo/node_modules ./node_modules
-COPY --from=build /repo/services/auth/node_modules ./services/auth/node_modules
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml* ./
+COPY services/auth/package.json services/auth/package.json
+COPY config/eslint-config/package.json config/eslint-config/package.json
+COPY config/typescript-config/package.json config/typescript-config/package.json
+RUN pnpm install --frozen-lockfile --prod --filter=@ai-rxos/auth...
 COPY --from=build /repo/services/auth/package.json ./services/auth/package.json
 COPY --from=build /repo/services/auth/dist ./services/auth/dist
+COPY --from=build /repo/services/auth/migrations ./services/auth/migrations
+COPY --from=build /repo/services/auth/public ./services/auth/public
 USER rxos
 EXPOSE 8081
 ENV PORT=8081

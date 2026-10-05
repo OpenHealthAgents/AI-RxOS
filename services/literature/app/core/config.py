@@ -18,6 +18,30 @@ class Settings(BaseSettings):
     opensearch_url: str = "http://opensearch:9200"
     jwt_secret: str = "change_this_dev_secret_before_deploying"
 
+    pubmed_api_key: str | None = None
+    pubmed_email: str | None = None
+    pubmed_requests_per_second: float = 1.0
+    pubmed_max_retries: int = 3
+    pubmed_backoff_seconds: float = 0.5
+
+    clinicaltrials_timeout: float = 10.0
+    clinicaltrials_max_retries: int = 3
+    clinicaltrials_backoff_seconds: float = 0.5
+    clinicaltrials_requests_per_second: float = 1.0
+    clinicaltrials_page_size: int = 50
+
+    fda_regulatory_timeout: float = 10.0
+    fda_regulatory_max_retries: int = 3
+    fda_regulatory_backoff_seconds: float = 0.5
+    fda_regulatory_requests_per_second: float = 1.0
+    fda_regulatory_page_size: int = 50
+
+    google_patents_timeout: float = 15.0
+    google_patents_max_retries: int = 3
+    google_patents_backoff_seconds: float = 0.5
+    google_patents_requests_per_second: float = 0.5
+    google_patents_page_size: int = 20
+
     kg_service_url: str = "http://kg:8083"
     # LLM_WIKI_URL is the repo-wide canonical env var (see root .env.example
     # and services/search); OKF_WIKI_URL is kept as a fallback alias so
@@ -72,6 +96,7 @@ class Settings(BaseSettings):
     search_service_url: str = "http://search:8084"
     kg_service_timeout_seconds: float = 5.0
     kg_service_max_retries: int = 3
+    ingestion_max_retries: int = 3
     llmwiki_service_url: str = "http://wiki:8000"
     llmwiki_service_timeout_seconds: float = 5.0
     llmwiki_service_max_retries: int = 3

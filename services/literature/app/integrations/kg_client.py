@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from typing import Any
@@ -25,6 +26,176 @@ class KGClient:
         self.timeout = float(self.config.get("kg_timeout", 5.0))
         self.max_retries = int(self.config.get("kg_max_retries", 1))
         self.backoff_seconds = float(self.config.get("kg_backoff_seconds", 0.25))
+
+    async def ingest_pubmed_article(
+        self,
+        article: dict[str, Any],
+        *,
+        bearer_token: str,
+    ) -> dict[str, Any]:
+        """Persist one PubMed article through KG's canonical reconciliation boundary."""
+        for attempt in range(self.max_retries + 1):
+            try:
+                async with httpx.AsyncClient(timeout=self.timeout) as client:
+                    response = await client.post(
+                        f"{self.base_url}/api/v1/canonical/pubmed/ingest",
+                        json=article,
+                        headers={"Authorization": f"Bearer {bearer_token}"},
+                    )
+                if response.status_code in {429, 500, 502, 503, 504} and attempt < self.max_retries:
+                    await asyncio.sleep(self.backoff_seconds * (2**attempt))
+                    continue
+                response.raise_for_status()
+                return response.json()
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code in {429, 500, 502, 503, 504} and attempt < self.max_retries:
+                    await asyncio.sleep(self.backoff_seconds * (2**attempt))
+                    continue
+                metrics.increment("literature.kg_pubmed_ingest.failure")
+                raise RuntimeError(f"canonical PubMed ingestion rejected: {exc}") from exc
+            except (httpx.TransportError, ValueError) as exc:
+                if attempt >= self.max_retries:
+                    metrics.increment("literature.kg_pubmed_ingest.failure")
+                    raise RuntimeError(f"canonical PubMed ingestion failed: {exc}") from exc
+                await asyncio.sleep(self.backoff_seconds * (2**attempt))
+        raise RuntimeError("canonical PubMed ingestion exhausted retries")
+
+    async def ingest_clinical_trial(
+        self,
+        trial: dict[str, Any],
+        *,
+        bearer_token: str,
+    ) -> dict[str, Any]:
+        """Persist one ClinicalTrials.gov record through canonical reconciliation."""
+        for attempt in range(self.max_retries + 1):
+            try:
+                async with httpx.AsyncClient(timeout=self.timeout) as client:
+                    response = await client.post(
+                        f"{self.base_url}/api/v1/canonical/clinicaltrials/ingest",
+                        json=trial,
+                        headers={"Authorization": f"Bearer {bearer_token}"},
+                    )
+                if response.status_code in {429, 500, 502, 503, 504} and attempt < self.max_retries:
+                    await asyncio.sleep(self.backoff_seconds * (2**attempt))
+                    continue
+                response.raise_for_status()
+                return response.json()
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code in {429, 500, 502, 503, 504} and attempt < self.max_retries:
+                    await asyncio.sleep(self.backoff_seconds * (2**attempt))
+                    continue
+                metrics.increment("literature.kg_clinicaltrials_ingest.failure")
+                raise RuntimeError(f"canonical ClinicalTrials ingestion rejected: {exc}") from exc
+            except (httpx.TransportError, ValueError) as exc:
+                if attempt >= self.max_retries:
+                    metrics.increment("literature.kg_clinicaltrials_ingest.failure")
+                    raise RuntimeError(f"canonical ClinicalTrials ingestion failed: {exc}") from exc
+                await asyncio.sleep(self.backoff_seconds * (2**attempt))
+        raise RuntimeError("canonical ClinicalTrials ingestion exhausted retries")
+
+    async def ingest_regulatory_event(
+        self,
+        event: dict[str, Any],
+        *,
+        bearer_token: str,
+    ) -> dict[str, Any]:
+        """Persist one source-backed regulatory event through canonical KG."""
+        for attempt in range(self.max_retries + 1):
+            try:
+                async with httpx.AsyncClient(timeout=self.timeout) as client:
+                    response = await client.post(
+                        f"{self.base_url}/api/v1/canonical/regulatory-events/ingest",
+                        json=event,
+                        headers={"Authorization": f"******"},
+                    )
+                if response.status_code in {429, 500, 502, 503, 504} and attempt < self.max_retries:
+                    await asyncio.sleep(self.backoff_seconds * (2**attempt))
+                    continue
+                response.raise_for_status()
+                return response.json()
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code in {429, 500, 502, 503, 504} and attempt < self.max_retries:
+                    await asyncio.sleep(self.backoff_seconds * (2**attempt))
+                    continue
+                metrics.increment("literature.kg_regulatory_ingest.failure")
+                raise RuntimeError(f"canonical regulatory ingestion rejected: {exc}") from exc
+            except (httpx.TransportError, ValueError) as exc:
+                if attempt >= self.max_retries:
+                    metrics.increment("literature.kg_regulatory_ingest.failure")
+                    raise RuntimeError(f"canonical regulatory ingestion failed: {exc}") from exc
+                await asyncio.sleep(self.backoff_seconds * (2**attempt))
+        raise RuntimeError("canonical regulatory ingestion exhausted retries")
+
+    async def ingest_patent_record(
+        self,
+        patent: dict[str, Any],
+        *,
+        bearer_token: str,
+    ) -> dict[str, Any]:
+        """Persist a patent record through KG's canonical IP evidence boundary."""
+        for attempt in range(self.max_retries + 1):
+            try:
+                async with httpx.AsyncClient(timeout=self.timeout) as client:
+                    response = await client.post(
+                        f"{self.base_url}/api/v1/canonical/ip/patents/ingest",
+                        json=patent,
+                        headers={"Authorization": f"Bearer {bearer_token}"},
+                    )
+                if response.status_code in {429, 500, 502, 503, 504} and attempt < self.max_retries:
+                    await asyncio.sleep(self.backoff_seconds * (2**attempt))
+                    continue
+                response.raise_for_status()
+                return response.json()
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code in {409, 422}:
+                    metrics.increment("literature.kg_patent_ingest.failure")
+                    raise ValueError(
+                        f"canonical patent record is invalid or conflicting: {exc}"
+                    ) from exc
+                if exc.response.status_code in {429, 500, 502, 503, 504} and attempt < self.max_retries:
+                    await asyncio.sleep(self.backoff_seconds * (2**attempt))
+                    continue
+                metrics.increment("literature.kg_patent_ingest.failure")
+                raise RuntimeError(f"canonical patent ingestion rejected: {exc}") from exc
+            except (httpx.TransportError, ValueError) as exc:
+                if attempt >= self.max_retries:
+                    metrics.increment("literature.kg_patent_ingest.failure")
+                    raise RuntimeError(f"canonical patent ingestion failed: {exc}") from exc
+                await asyncio.sleep(self.backoff_seconds * (2**attempt))
+        raise RuntimeError("canonical patent ingestion exhausted retries")
+
+    async def ingest_licensing_event(
+        self,
+        event: dict[str, Any],
+        *,
+        bearer_token: str,
+    ) -> dict[str, Any]:
+        """Persist an evidence-backed licensing event through canonical KG."""
+        for attempt in range(self.max_retries + 1):
+            try:
+                async with httpx.AsyncClient(timeout=self.timeout) as client:
+                    response = await client.post(
+                        f"{self.base_url}/api/v1/canonical/ip/licensing-events/ingest",
+                        json=event,
+                        headers={"Authorization": f"Bearer {bearer_token}"},
+                    )
+                if response.status_code in {429, 500, 502, 503, 504} and attempt < self.max_retries:
+                    await asyncio.sleep(self.backoff_seconds * (2**attempt))
+                    continue
+                response.raise_for_status()
+                return response.json()
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code in {429, 500, 502, 503, 504} and attempt < self.max_retries:
+                    await asyncio.sleep(self.backoff_seconds * (2**attempt))
+                    continue
+                metrics.increment("literature.kg_licensing_ingest.failure")
+                raise RuntimeError(f"canonical licensing ingestion rejected: {exc}") from exc
+            except (httpx.TransportError, ValueError) as exc:
+                if attempt >= self.max_retries:
+                    metrics.increment("literature.kg_licensing_ingest.failure")
+                    raise RuntimeError(f"canonical licensing ingestion failed: {exc}") from exc
+                await asyncio.sleep(self.backoff_seconds * (2**attempt))
+        raise RuntimeError("canonical licensing ingestion exhausted retries")
 
     def update_knowledge_graph(self, entities: list[dict[str, Any]], relationships: list[dict[str, Any]]) -> dict[str, Any]:
         """Convert extracted entities and relationships into a KG import request.

@@ -7,7 +7,7 @@
     "worker": "python -m app.jobs.worker",
     "build": "python -m compileall app",
     "lint": "ruff check app",
-    "test": "pytest -q",
+    "test": "python -m pytest -q",
     "typecheck": "mypy app --ignore-missing-imports",
     "clean": "rimraf __pycache__ .pytest_cache"
   },

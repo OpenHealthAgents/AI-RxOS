@@ -83,20 +83,11 @@ func TestTenantScope_UnscopedQuerySeesEverything_BackwardCompat(t *testing.T) {
 	ctx := context.Background()
 	embed := []float32{1.0, 1.0, 0.0}
 
-	// Untenanted IndexDocument (pre-Prompt-8 call signature) must keep working.
-	engine.IndexDocument("legacy-doc", "Legacy", "legacy untenanted content", "benchmark", embed, 0)
+	engine.IndexDocumentForTenant("legacy-doc", "Legacy", "legacy untenanted content", "benchmark", embed, 0, TenantScope{System: true})
 	engine.IndexDocumentForTenant("tenant-doc", "Tenant", "tenant scoped content", "okf_concept", embed, 0, TenantScope{OrgID: "org-a"})
 
-	hits, err := engine.SearchVector(ctx, embed, 10)
-	if err != nil {
-		t.Fatalf("SearchVector failed: %v", err)
-	}
-	seen := map[string]bool{}
-	for _, h := range hits {
-		seen[h.ID] = true
-	}
-	if !seen["legacy-doc"] || !seen["tenant-doc"] {
-		t.Fatalf("unscoped query should see both legacy and tenant-scoped documents, got %+v", hits)
+	if _, err := engine.SearchVector(ctx, embed, 10); err == nil {
+		t.Fatal("unscoped vector query must fail closed")
 	}
 }
 
@@ -107,7 +98,7 @@ func TestTenantScope_UntenantedDocumentsAreSharedAcrossOrganizations(t *testing.
 
 	// Content indexed before tenant scoping existed (no TenantScope) should
 	// remain visible to every tenant, rather than becoming orphaned.
-	engine.IndexDocument("pre-existing", "Pre-existing", "shared legacy content", "okf_concept", embed, 0)
+	engine.IndexDocumentForTenant("pre-existing", "Pre-existing", "shared legacy content", "okf_concept", embed, 0, TenantScope{System: true})
 
 	hits, err := engine.SearchVectorForTenant(ctx, embed, 10, TenantScope{OrgID: "org-a"})
 	if err != nil {

@@ -82,9 +82,39 @@ def test_orchestrator_runs_complete_pipeline():
     assert result["processed"] is True
 
 
-def test_service_ingest_uses_registry_and_returns_payload():
+def test_service_ingest_uses_registry_and_returns_payload(monkeypatch):
+    class FakeConnector:
+        name = "pubmed"
+
+        def __init__(self, config=None):
+            self.config = config or {}
+
+        def connect(self):
+            return {"connected": True}
+
+        def get_limitation(self):
+            return None
+
+        def fetch(self, query, **kwargs):
+            return [
+                {
+                    "title": "HER2 study",
+                    "source": "pubmed",
+                    "source_id": "PMID123",
+                    "abstract": "HER2 study abstract",
+                }
+            ]
+
+    create_calls = []
+
+    def create_connector(source, config=None):
+        create_calls.append(source)
+        return FakeConnector(config)
+
+    monkeypatch.setattr(ConnectorFactory, "create", create_connector)
     service = LiteratureService()
     outcome = service.ingest("pubmed", "HER2 breast cancer", base_url="https://example.com")
+    assert create_calls == ["pubmed"]
     assert "source" in outcome
     assert outcome["source"] == "pubmed"
     assert "items" in outcome

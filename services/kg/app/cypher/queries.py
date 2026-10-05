@@ -3,6 +3,15 @@ from uuid import UUID
 from datetime import datetime
 from typing import Any, Optional, Dict, List
 from neo4j import AsyncTransaction
+from app.core.neo4j_security import Neo4jScope, require_scope
+
+
+def _scope_params(scope: Neo4jScope) -> dict[str, Any]:
+    scope = require_scope(scope)
+    return {"organization_id": scope.tenant_id, "system_scope": scope.system}
+
+
+NODE_VISIBILITY = "($system_scope OR (coalesce(n.visibility, 'global') = 'global' OR coalesce(n.organization_id, n.tenant_id) = $organization_id))"
 
 # Generic `MATCH (n)` scans (list_nodes, search_nodes) match every node in
 # the database when no label filter is given, including internal bookkeeping
@@ -21,7 +30,7 @@ async def create_constraints_and_indexes(tx: AsyncTransaction) -> None:
     labels = [
         "Gene", "Protein", "Disease", "Drug", "Target", "Mutation",
         "Publication", "Patent", "ClinicalTrial", "Company", "Conference",
-        "Biomarker"
+        "Biomarker", "CanonicalEntity"
     ]
     for label in labels:
         constraint_query = f"CREATE CONSTRAINT {label.lower()}_id_unique IF NOT EXISTS FOR (n:{label}) REQUIRE n.id IS UNIQUE"
@@ -29,9 +38,9 @@ async def create_constraints_and_indexes(tx: AsyncTransaction) -> None:
         index_query = f"CREATE INDEX {label.lower()}_name_idx IF NOT EXISTS FOR (n:{label}) ON (n.name)"
         await tx.run(index_query)
 
-async def get_max_active_version(tx: AsyncTransaction) -> int:
+async def get_max_active_version(tx: AsyncTransaction, scope: Neo4jScope) -> int:
     query = 'MATCH (v:GraphVersion {status: "active"}) RETURN max(v.version_number) AS max_v'
-    result = await tx.run(query)
+    result = await tx.run(query, **_scope_params(scope))
     record = await result.single()
     if record and record["max_v"] is not None:
         return record["max_v"]
@@ -47,7 +56,8 @@ async def create_node(
     metadata_json: str,
     created_at: str,
     updated_at: str,
-    version: int
+    version: int,
+    scope: Neo4jScope
 ) -> Dict[str, Any]:
     query = f"""
     CREATE (n:{label} {{
@@ -58,7 +68,9 @@ async def create_node(
         metadata: $metadata,
         created_at: $created_at,
         updated_at: $updated_at,
-        version: $version
+        version: $version,
+        visibility: $visibility,
+        organization_id: $node_organization_id
     }})
     RETURN n, labels(n)[0] AS label
     """
@@ -71,20 +83,24 @@ async def create_node(
         metadata=metadata_json,
         created_at=created_at,
         updated_at=updated_at,
-        version=version
+        version=version,
+        visibility="global" if scope.system and scope.organization_id is None else "tenant",
+        node_organization_id=scope.tenant_id,
+        **_scope_params(scope)
     )
     record = await result.single()
     if not record:
         raise RuntimeError("Failed to create node")
     return dict(record["n"].items()) | {"label": record["label"]}
 
-async def get_node(tx: AsyncTransaction, node_id: str, max_version: int) -> Optional[Dict[str, Any]]:
-    query = """
+async def get_node(tx: AsyncTransaction, node_id: str, max_version: int, scope: Neo4jScope) -> Optional[Dict[str, Any]]:
+    query = f"""
     MATCH (n)
-    WHERE n.id = $id AND (n.version IS NULL OR n.version <= $max_version)
+        WHERE n.id = $id AND (n.version IS NULL OR n.version <= $max_version)
+            AND {NODE_VISIBILITY}
     RETURN n, labels(n)[0] AS label
     """
-    result = await tx.run(query, id=node_id, max_version=max_version)
+    result = await tx.run(query, id=node_id, max_version=max_version, **_scope_params(scope))
     record = await result.single()
     if not record:
         return None
@@ -98,7 +114,8 @@ async def update_node(
     source: Optional[str],
     metadata_json: Optional[str],
     updated_at: str,
-    max_version: int
+    max_version: int,
+    scope: Neo4jScope
 ) -> Optional[Dict[str, Any]]:
     # Dynamic SET construction to avoid overwriting with nulls if patch updates are partial
     set_clauses = ["n.updated_at = $updated_at"]
@@ -120,24 +137,26 @@ async def update_node(
     set_str = ", ".join(set_clauses)
     query = f"""
     MATCH (n)
-    WHERE n.id = $id AND (n.version IS NULL OR n.version <= $max_version)
+        WHERE n.id = $id AND (n.version IS NULL OR n.version <= $max_version)
+            AND {NODE_VISIBILITY}
     SET {set_str}
     RETURN n, labels(n)[0] AS label
     """
-    result = await tx.run(query, **params)
+    result = await tx.run(query, **params, **_scope_params(scope))
     record = await result.single()
     if not record:
         return None
     return dict(record["n"].items()) | {"label": record["label"]}
 
-async def delete_node(tx: AsyncTransaction, node_id: str, max_version: int) -> int:
-    query = """
+async def delete_node(tx: AsyncTransaction, node_id: str, max_version: int, scope: Neo4jScope) -> int:
+    query = f"""
     MATCH (n)
-    WHERE n.id = $id AND (n.version IS NULL OR n.version <= $max_version)
+        WHERE n.id = $id AND (n.version IS NULL OR n.version <= $max_version)
+            AND {NODE_VISIBILITY}
     DETACH DELETE n
     RETURN count(n) AS deleted_count
     """
-    result = await tx.run(query, id=node_id, max_version=max_version)
+    result = await tx.run(query, id=node_id, max_version=max_version, **_scope_params(scope))
     record = await result.single()
     return record["deleted_count"] if record else 0
 
@@ -146,8 +165,10 @@ async def list_nodes(
     max_version: int,
     label: Optional[str] = None,
     page: int = 1,
-    size: int = 20
+    size: int = 20,
+    scope: Neo4jScope | None = None
 ) -> tuple[List[Dict[str, Any]], int]:
+    scope = require_scope(scope)
     skip = (page - 1) * size
     label_clause = f":{label}" if label else ""
     
@@ -155,6 +176,7 @@ async def list_nodes(
     MATCH (n{label_clause})
     WHERE {VALID_DOMAIN_NODE_FILTER}
       AND (n.version IS NULL OR n.version <= $max_version)
+            AND {NODE_VISIBILITY}
     RETURN n, labels(n)[0] AS label
     ORDER BY n.created_at DESC
     SKIP $skip LIMIT $size
@@ -163,15 +185,17 @@ async def list_nodes(
     MATCH (n{label_clause})
     WHERE {VALID_DOMAIN_NODE_FILTER}
       AND (n.version IS NULL OR n.version <= $max_version)
+            AND {NODE_VISIBILITY}
     RETURN count(n) AS total
     """
 
-    res = await tx.run(query, max_version=max_version, skip=skip, size=size)
+    params = {"max_version": max_version, "skip": skip, "size": size, **_scope_params(scope)}
+    res = await tx.run(query, **params)
     nodes = []
     async for record in res:
         nodes.append(dict(record["n"].items()) | {"label": record["label"]})
         
-    count_res = await tx.run(count_query, max_version=max_version)
+    count_res = await tx.run(count_query, **_scope_params(scope), max_version=max_version)
     count_record = await count_res.single()
     total = count_record["total"] if count_record else 0
     return nodes, total
@@ -187,11 +211,14 @@ async def create_relationship(
     source: Optional[str],
     created_at: str,
     version: int,
-    max_version: int
+    max_version: int,
+    scope: Neo4jScope
 ) -> Optional[Dict[str, Any]]:
     query = f"""
-    MATCH (from) WHERE from.id = $from_node_id AND (from.version IS NULL OR from.version <= $max_version)
-    MATCH (to) WHERE to.id = $to_node_id AND (to.version IS NULL OR to.version <= $max_version)
+        MATCH (from) WHERE from.id = $from_node_id AND (from.version IS NULL OR from.version <= $max_version)
+            AND ($system_scope OR (coalesce(from.visibility, 'global') = 'global' OR coalesce(from.organization_id, from.tenant_id) = $organization_id))
+        MATCH (to) WHERE to.id = $to_node_id AND (to.version IS NULL OR to.version <= $max_version)
+            AND ($system_scope OR (coalesce(to.visibility, 'global') = 'global' OR coalesce(to.organization_id, to.tenant_id) = $organization_id))
     CREATE (from)-[r:{relationship_type} {{
         id: $id,
         evidence: $evidence,
@@ -212,7 +239,8 @@ async def create_relationship(
         source=source,
         created_at=created_at,
         version=version,
-        max_version=max_version
+        max_version=max_version,
+        **_scope_params(scope)
     )
     record = await result.single()
     if not record:
@@ -229,41 +257,49 @@ async def count_relationships_between(
     from_node_id: str,
     to_node_id: str,
     relationship_type: str,
-    max_version: int
+    max_version: int,
+    scope: Neo4jScope
 ) -> int:
     query = f"""
     MATCH (from)-[r:{relationship_type}]->(to)
     WHERE from.id = $from_node_id AND to.id = $to_node_id
       AND (r.version IS NULL OR r.version <= $max_version)
+            AND ($system_scope OR (coalesce(from.visibility, 'global') = 'global' OR coalesce(from.organization_id, from.tenant_id) = $organization_id))
+            AND ($system_scope OR (coalesce(to.visibility, 'global') = 'global' OR coalesce(to.organization_id, to.tenant_id) = $organization_id))
     RETURN count(r) AS cnt
     """
     result = await tx.run(
         query,
         from_node_id=from_node_id,
         to_node_id=to_node_id,
-        max_version=max_version
+        max_version=max_version,
+        **_scope_params(scope)
     )
     record = await result.single()
     return record["cnt"] if record else 0
 
-async def delete_relationship(tx: AsyncTransaction, rel_id: str, max_version: int) -> int:
-    query = """
-    MATCH ()-[r]->()
-    WHERE r.id = $id AND (r.version IS NULL OR r.version <= $max_version)
-    DELETE r
-    RETURN count(r) AS deleted_count
-    """
-    result = await tx.run(query, id=rel_id, max_version=max_version)
-    record = await result.single()
-    return record["deleted_count"] if record else 0
+async def delete_relationship(tx: AsyncTransaction, rel_id: str, max_version: int, scope: Neo4jScope) -> int:
+        query = """
+        MATCH (from)-[r]->(to)
+        WHERE r.id = $id AND (r.version IS NULL OR r.version <= $max_version)
+            AND ($system_scope OR (coalesce(from.visibility, 'global') = 'global' OR coalesce(from.organization_id, from.tenant_id) = $organization_id))
+            AND ($system_scope OR (coalesce(to.visibility, 'global') = 'global' OR coalesce(to.organization_id, to.tenant_id) = $organization_id))
+        DELETE r
+        RETURN count(r) AS deleted_count
+        """
+        result = await tx.run(query, id=rel_id, max_version=max_version, **_scope_params(scope))
+        record = await result.single()
+        return record["deleted_count"] if record else 0
 
 async def list_relationships(
     tx: AsyncTransaction,
     max_version: int,
     rel_type: Optional[str] = None,
     page: int = 1,
-    size: int = 20
+    size: int = 20,
+    scope: Neo4jScope | None = None
 ) -> tuple[List[Dict[str, Any]], int]:
+    scope = require_scope(scope)
     skip = (page - 1) * size
     type_clause = f":{rel_type}" if rel_type else ""
     
@@ -272,6 +308,8 @@ async def list_relationships(
     WHERE (r.version IS NULL OR r.version <= $max_version)
       AND (from.version IS NULL OR from.version <= $max_version)
       AND (to.version IS NULL OR to.version <= $max_version)
+    AND ($system_scope OR (coalesce(from.visibility, 'global') = 'global' OR coalesce(from.organization_id, from.tenant_id) = $organization_id))
+    AND ($system_scope OR (coalesce(to.visibility, 'global') = 'global' OR coalesce(to.organization_id, to.tenant_id) = $organization_id))
     RETURN r, from.id AS from_id, to.id AS to_id, type(r) AS rel_type
     ORDER BY r.created_at DESC
     SKIP $skip LIMIT $size
@@ -281,10 +319,12 @@ async def list_relationships(
     WHERE (r.version IS NULL OR r.version <= $max_version)
       AND (from.version IS NULL OR from.version <= $max_version)
       AND (to.version IS NULL OR to.version <= $max_version)
+    AND ($system_scope OR (coalesce(from.visibility, 'global') = 'global' OR coalesce(from.organization_id, from.tenant_id) = $organization_id))
+    AND ($system_scope OR (coalesce(to.visibility, 'global') = 'global' OR coalesce(to.organization_id, to.tenant_id) = $organization_id))
     RETURN count(r) AS total
     """
     
-    res = await tx.run(query, max_version=max_version, skip=skip, size=size)
+    res = await tx.run(query, max_version=max_version, skip=skip, size=size, **_scope_params(scope))
     relationships = []
     async for record in res:
         r_properties = dict(record["r"].items())
@@ -294,21 +334,23 @@ async def list_relationships(
             "type": record["rel_type"]
         })
         
-    count_res = await tx.run(count_query, max_version=max_version)
+    count_res = await tx.run(count_query, max_version=max_version, **_scope_params(scope))
     count_record = await count_res.single()
     total = count_record["total"] if count_record else 0
     return relationships, total
 
-async def get_neighbors(tx: AsyncTransaction, node_id: str, max_version: int) -> Optional[Dict[str, Any]]:
-    query = """
+async def get_neighbors(tx: AsyncTransaction, node_id: str, max_version: int, scope: Neo4jScope) -> Optional[Dict[str, Any]]:
+    query = f"""
     MATCH (n)
     WHERE n.id = $node_id AND (n.version IS NULL OR n.version <= $max_version)
+        AND {NODE_VISIBILITY}
     OPTIONAL MATCH (n)-[r]-(m)
     WHERE (r.version IS NULL OR r.version <= $max_version)
       AND (m.version IS NULL OR m.version <= $max_version)
+        AND ($system_scope OR (coalesce(m.visibility, 'global') = 'global' OR coalesce(m.organization_id, m.tenant_id) = $organization_id))
     RETURN n, labels(n)[0] AS label, r, m, labels(m)[0] AS m_label, startNode(r).id AS start_id, endNode(r).id AS end_id, type(r) AS rel_type
     """
-    result = await tx.run(query, node_id=node_id, max_version=max_version)
+    result = await tx.run(query, node_id=node_id, max_version=max_version, **_scope_params(scope))
     
     core_node = None
     neighbors_list = []
@@ -346,14 +388,18 @@ async def get_path(
     start_node_id: str,
     end_node_id: str,
     max_depth: int,
-    max_version: int
+    max_version: int,
+    scope: Neo4jScope
 ) -> Optional[Dict[str, Any]]:
     query = f"""
     MATCH (start) WHERE start.id = $start_id AND (start.version IS NULL OR start.version <= $max_version)
+        AND ($system_scope OR (coalesce(start.visibility, 'global') = 'global' OR coalesce(start.organization_id, start.tenant_id) = $organization_id))
     MATCH (end) WHERE end.id = $end_id AND (end.version IS NULL OR end.version <= $max_version)
+        AND ($system_scope OR (coalesce(end.visibility, 'global') = 'global' OR coalesce(end.organization_id, end.tenant_id) = $organization_id))
     MATCH path = (start)-[*..{max_depth}]-(end)
     WHERE all(x IN nodes(path) WHERE x.version IS NULL OR x.version <= $max_version)
       AND all(y IN relationships(path) WHERE y.version IS NULL OR y.version <= $max_version)
+        AND all(x IN nodes(path) WHERE $system_scope OR coalesce(x.visibility, 'global') = 'global' OR coalesce(x.organization_id, x.tenant_id) = $organization_id)
     RETURN path
     ORDER BY length(path)
     LIMIT 1
@@ -362,7 +408,8 @@ async def get_path(
         query,
         start_id=start_node_id,
         end_id=end_node_id,
-        max_version=max_version
+        max_version=max_version,
+        **_scope_params(scope)
     )
     record = await result.single()
     if not record or not record["path"]:
@@ -387,11 +434,43 @@ async def get_path(
         
     return {"nodes": nodes, "relationships": relationships}
 
+
+async def search_relevance(
+    tx: AsyncTransaction,
+    query_tokens: list[str],
+    document_ids: list[str],
+    scope: Neo4jScope,
+) -> dict[str, float]:
+    """Score only candidate nodes connected to entities named in the query."""
+    query = """
+    MATCH (seed:CanonicalEntity)
+    WHERE any(token IN $query_tokens WHERE toLower(seed.name) CONTAINS token)
+      AND ($system_scope OR coalesce(seed.visibility, 'global') = 'global'
+           OR coalesce(seed.organization_id, seed.tenant_id) = $organization_id)
+    MATCH path = (seed)-[rels:CANONICAL_RELATIONSHIP*1..2]-(candidate:CanonicalEntity)
+    WHERE candidate.id IN $document_ids
+      AND all(node IN nodes(path) WHERE
+          $system_scope OR coalesce(node.visibility, 'global') = 'global'
+          OR coalesce(node.organization_id, node.tenant_id) = $organization_id)
+      AND all(rel IN rels WHERE
+          $system_scope OR coalesce(rel.visibility, 'global') = 'global'
+          OR coalesce(rel.organization_id, rel.tenant_id) = $organization_id)
+    RETURN candidate.id AS id, max(1.0 / length(path)) AS score
+    """
+    result = await tx.run(
+        query,
+        query_tokens=query_tokens,
+        document_ids=document_ids,
+        **_scope_params(scope),
+    )
+    return {record["id"]: float(record["score"]) async for record in result}
+
 async def get_subgraph(
     tx: AsyncTransaction,
     node_ids: List[str],
     relationship_types: Optional[List[str]],
-    max_version: int
+    max_version: int,
+    scope: Neo4jScope
 ) -> Dict[str, Any]:
     type_clause = ""
     if relationship_types:
@@ -399,12 +478,14 @@ async def get_subgraph(
         
     query = f"""
     MATCH (n)
-    WHERE n.id IN $node_ids AND (n.version IS NULL OR n.version <= $max_version)
+        WHERE n.id IN $node_ids AND (n.version IS NULL OR n.version <= $max_version)
+            AND {NODE_VISIBILITY}
     WITH collect(n) AS matched_nodes
     UNWIND matched_nodes AS n
     OPTIONAL MATCH (n)-[r]-(m)
     WHERE m IN matched_nodes 
       AND (r.version IS NULL OR r.version <= $max_version)
+            AND ($system_scope OR (coalesce(m.visibility, 'global') = 'global' OR coalesce(m.organization_id, m.tenant_id) = $organization_id))
       {type_clause}
     RETURN n, labels(n)[0] AS label, r, m, labels(m)[0] AS m_label, startNode(r).id AS start_id, endNode(r).id AS end_id, type(r) AS rel_type
     """
@@ -412,7 +493,8 @@ async def get_subgraph(
         query,
         node_ids=node_ids,
         relationship_types=relationship_types,
-        max_version=max_version
+        max_version=max_version,
+        **_scope_params(scope)
     )
     
     nodes_map = {}
@@ -445,26 +527,29 @@ async def search_nodes(
     q: str,
     label: Optional[str],
     max_version: int,
-    limit: int = 10
+    limit: int = 10,
+    scope: Neo4jScope | None = None
 ) -> List[Dict[str, Any]]:
+    scope = require_scope(scope)
     label_clause = f":{label}" if label else ""
     query = f"""
     MATCH (n{label_clause})
     WHERE {VALID_DOMAIN_NODE_FILTER}
       AND (n.version IS NULL OR n.version <= $max_version)
+    AND {NODE_VISIBILITY}
       AND (toLower(n.name) CONTAINS toLower($q) OR toLower(n.description) CONTAINS toLower($q))
     RETURN n, labels(n)[0] AS label
     LIMIT $limit
     """
-    result = await tx.run(query, q=q, max_version=max_version, limit=limit)
+    result = await tx.run(query, q=q, max_version=max_version, limit=limit, **_scope_params(scope))
     nodes = []
     async for record in result:
         nodes.append(dict(record["n"].items()) | {"label": record["label"]})
     return nodes
 
-async def get_next_version_number(tx: AsyncTransaction) -> int:
+async def get_next_version_number(tx: AsyncTransaction, scope: Neo4jScope) -> int:
     query = "MATCH (v:GraphVersion) RETURN max(v.version_number) AS max_v"
-    result = await tx.run(query)
+    result = await tx.run(query, **_scope_params(scope))
     record = await result.single()
     if record and record["max_v"] is not None:
         return record["max_v"] + 1
@@ -475,7 +560,8 @@ async def create_version(
     version_id: str,
     version_number: int,
     description: str,
-    created_at: str
+    created_at: str,
+    scope: Neo4jScope
 ) -> Dict[str, Any]:
     query = """
     CREATE (v:GraphVersion {
@@ -492,29 +578,30 @@ async def create_version(
         id=version_id,
         version_number=version_number,
         description=description,
-        created_at=created_at
+        created_at=created_at,
+        **_scope_params(scope)
     )
     record = await result.single()
     if not record:
         raise RuntimeError("Failed to create GraphVersion record")
     return dict(record["v"].items())
 
-async def get_version_by_number(tx: AsyncTransaction, version_number: int) -> Optional[Dict[str, Any]]:
+async def get_version_by_number(tx: AsyncTransaction, version_number: int, scope: Neo4jScope) -> Optional[Dict[str, Any]]:
     query = "MATCH (v:GraphVersion {version_number: $version_number}) RETURN v"
-    result = await tx.run(query, version_number=version_number)
+    result = await tx.run(query, version_number=version_number, **_scope_params(scope))
     record = await result.single()
     if not record:
         return None
     return dict(record["v"].items())
 
-async def rollback_to_version(tx: AsyncTransaction, target_version: int) -> int:
+async def rollback_to_version(tx: AsyncTransaction, target_version: int, scope: Neo4jScope) -> int:
     query = """
     MATCH (v:GraphVersion)
     WHERE v.version_number > $target_version
     SET v.status = "rolled_back"
     RETURN count(v) AS updated_count
     """
-    result = await tx.run(query, target_version=target_version)
+    result = await tx.run(query, target_version=target_version, **_scope_params(scope))
     record = await result.single()
     updated_count = record["updated_count"] if record else 0
 
@@ -523,17 +610,18 @@ async def rollback_to_version(tx: AsyncTransaction, target_version: int) -> int:
     # it so get_max_active_version resolves to it again.
     await tx.run(
         'MATCH (v:GraphVersion {version_number: $target_version}) SET v.status = "active"',
-        target_version=target_version
+        target_version=target_version,
+        **_scope_params(scope)
     )
 
     return updated_count
 
-async def list_versions(tx: AsyncTransaction) -> List[Dict[str, Any]]:
+async def list_versions(tx: AsyncTransaction, scope: Neo4jScope) -> List[Dict[str, Any]]:
     query = """
     MATCH (v:GraphVersion)
     RETURN v ORDER BY v.version_number DESC
     """
-    result = await tx.run(query)
+    result = await tx.run(query, **_scope_params(scope))
     versions = []
     async for record in result:
         versions.append(dict(record["v"].items()))
@@ -542,7 +630,8 @@ async def list_versions(tx: AsyncTransaction) -> List[Dict[str, Any]]:
 async def merge_import_nodes_batch(
     tx: AsyncTransaction,
     label: str,
-    rows: List[Dict[str, Any]]
+    rows: List[Dict[str, Any]],
+    scope: Neo4jScope
 ) -> None:
     query = f"""
     UNWIND $rows AS row
@@ -559,13 +648,22 @@ async def merge_import_nodes_batch(
                  n.source = coalesce(row.source, n.source),
                  n.metadata = coalesce(row.metadata, n.metadata),
                  n.updated_at = row.updated_at
+    SET n.visibility = $visibility,
+        n.organization_id = $node_organization_id
     """
-    await tx.run(query, rows=rows)
+    await tx.run(
+        query,
+        rows=rows,
+        visibility="global" if scope.system and scope.organization_id is None else "tenant",
+        node_organization_id=scope.tenant_id,
+        **_scope_params(scope)
+    )
 
 async def merge_import_relationships_batch(
     tx: AsyncTransaction,
     relationship_type: str,
-    rows: List[Dict[str, Any]]
+    rows: List[Dict[str, Any]],
+    scope: Neo4jScope
 ) -> List[str]:
     """Merges a batch of same-type relationships in one UNWIND. Rows whose
     from/to node doesn't exist are silently excluded by the MATCH join;
@@ -573,8 +671,10 @@ async def merge_import_relationships_batch(
     report an accurate imported count."""
     query = f"""
     UNWIND $rows AS row
-    MATCH (from) WHERE from.id = row.from_node_id
-    MATCH (to) WHERE to.id = row.to_node_id
+        MATCH (from) WHERE from.id = row.from_node_id
+            AND ($system_scope OR (coalesce(from.visibility, 'global') = 'global' OR coalesce(from.organization_id, from.tenant_id) = $organization_id))
+        MATCH (to) WHERE to.id = row.to_node_id
+            AND ($system_scope OR (coalesce(to.visibility, 'global') = 'global' OR coalesce(to.organization_id, to.tenant_id) = $organization_id))
     MERGE (from)-[r:{relationship_type} {{id: row.id}}]->(to)
     ON CREATE SET r.evidence = row.evidence,
                   r.confidence = row.confidence,
@@ -583,6 +683,5 @@ async def merge_import_relationships_batch(
                   r.version = row.version
     RETURN row.id AS id
     """
-    result = await tx.run(query, rows=rows)
+    result = await tx.run(query, rows=rows, **_scope_params(scope))
     return [record["id"] async for record in result]
-
