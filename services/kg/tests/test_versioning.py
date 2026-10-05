@@ -5,8 +5,11 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.services.version_service import VersionNotFoundError, VersionService
+from app.core.canonical_security import CanonicalPrincipal
+from uuid import UUID
 
 client = TestClient(app)
+PRINCIPAL = CanonicalPrincipal(None, UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"), frozenset(), frozenset())
 
 
 # ---------------------------------------------------------------------------
@@ -60,10 +63,10 @@ def mock_session():
 @pytest.mark.asyncio
 async def test_service_rollback_raises_for_missing_version(mock_session):
     with pytest.raises(VersionNotFoundError):
-        await VersionService.rollback_to_version(404)
+        await VersionService.rollback_to_version(404, PRINCIPAL)
 
 
 @pytest.mark.asyncio
 async def test_service_rollback_succeeds_for_existing_version(mock_session):
-    count = await VersionService.rollback_to_version(2)
+    count = await VersionService.rollback_to_version(2, PRINCIPAL)
     assert count == 3

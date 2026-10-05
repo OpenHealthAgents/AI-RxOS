@@ -1,22 +1,27 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any
+import asyncio
+from datetime import datetime
 
 from app.connectors.base import PageResult, SourceConnector, SourceRecord
-from app.connectors.http_client import HealthClient, HTTPClient
+from app.connectors.http_client import HealthClient
+from app.connectors.sources import ClinicalTrialsConnector as ClinicalTrialsAPIConnector
 from app.core.config import get_settings
-
-settings = get_settings()
 
 
 class ClinicalTrialsConnector(SourceConnector):
+    """Async Literature connector facade over the shared ClinicalTrials v2 adapter."""
+
     def __init__(self) -> None:
         super().__init__("clinicaltrials")
-        self.client = HTTPClient(
-            base_url=settings.clinicaltrials_base_url,
-            headers={"Accept": "application/json"},
-        )
+        settings = get_settings()
+        self.client = ClinicalTrialsAPIConnector({
+            "base_url": settings.clinicaltrials_base_url,
+            "timeout": settings.clinicaltrials_timeout,
+            "max_retries": settings.clinicaltrials_max_retries,
+            "backoff_seconds": settings.clinicaltrials_backoff_seconds,
+            "requests_per_second": settings.clinicaltrials_requests_per_second,
+        })
         self.health_client = HealthClient(base_url="https://clinicaltrials.gov")
 
     async def health_check(self) -> bool:
@@ -29,59 +34,31 @@ class ClinicalTrialsConnector(SourceConnector):
         since: datetime | None = None,
         page_size: int = 50,
     ) -> PageResult:
-        params: dict[str, object] = {
-            "fmt": "json",
-            "min_rnk": 1,
-            "max_rnk": page_size,
-        }
-        if query:
-            params["expr"] = query
-        if page_token:
-            params["min_rnk"] = int(page_token)
-            params["max_rnk"] = int(page_token) + page_size - 1
-        if since:
-            params["lastupdatefrom"] = since.strftime("%Y-%m-%d")
-
-        response = await self.client.get("/study_fields", params=params)
-        payload = response.json()
-        fields = payload.get("StudyFieldsResponse", {}).get("StudyFields", [])
-        next_token = None
-        if fields and len(fields) == page_size:
-            next_token = str(int(page_token or "1") + page_size)
-
+        if since is not None:
+            raise ValueError("ClinicalTrials v2 ingestion does not accept a since filter")
+        items, next_page_token = await asyncio.to_thread(
+            self.client.fetch_page,
+            query or "",
+            page_token=page_token,
+            page_size=page_size,
+        )
         return PageResult(
-            items=[self._normalize(item) for item in fields],
-            next_page_token=next_token,
+            items=[
+                SourceRecord(
+                    source=self.source_name,
+                    source_id=item["nct_id"],
+                    title=item["title"],
+                    abstract=item.get("abstract"),
+                    authors=[],
+                    published_date=None,
+                    url=item["url"],
+                    extra={
+                        **item["metadata"],
+                        "raw_payload": item["raw_payload"],
+                        "content_hash": item["content_hash"],
+                    },
+                )
+                for item in items
+            ],
+            next_page_token=next_page_token,
         )
-
-    def _normalize(self, raw: dict[str, Any]) -> SourceRecord:
-        return SourceRecord(
-            source=self.source_name,
-            source_id=str(raw.get("NCTId", [""])[0]),
-            title=(raw.get("BriefTitle", [""])[0] if raw.get("BriefTitle") else ""),
-            abstract=(
-                raw.get("BriefSummary", [""])[0] if raw.get("BriefSummary") else None
-            ),
-            authors=[],
-            published_date=self._parse_date(
-                raw.get("StartDate", [""])[0] if raw.get("StartDate") else None
-            ),
-            doi=None,
-            url=f"https://clinicaltrials.gov/study/{raw.get('NCTId', [''])[0]}",
-            source_updated_at=self._parse_date(
-                raw.get("LastUpdatePostDate", [""])[0]
-                if raw.get("LastUpdatePostDate")
-                else None
-            ),
-            extra={"raw": raw},
-        )
-
-    def _parse_date(self, value: Any) -> datetime | None:
-        if not value:
-            return None
-        for fmt in ["%B %d, %Y", "%Y-%m-%d"]:
-            try:
-                return datetime.strptime(value, fmt).replace(tzinfo=timezone.utc)
-            except ValueError:
-                continue
-        return None

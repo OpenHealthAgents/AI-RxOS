@@ -22,6 +22,7 @@ FROM deps AS runtime
 RUN useradd --create-home --uid 1000 rxos
 
 COPY services/kg/app ./app
+COPY services/kg/migrations ./migrations
 
 USER rxos
 

@@ -14,7 +14,8 @@ Run the container:
 
 ```bash
 docker run -p 8082:8082 \
-  -e DATABASE_URL="postgresql://user:password@postgres:5432/ai_rxos" \
+  -e LITERATURE_DATABASE_URL="postgresql://literature_app:password@postgres:5432/ai_rxos" \
+  -e LITERATURE_MIGRATION_DATABASE_URL="postgresql://schema_owner:password@postgres:5432/ai_rxos" \
   -e JWT_SECRET="<secure-secret>" \
   -e SEARCH_SERVICE_URL="http://search:8084" \
   -e KG_SERVICE_URL="http://kg:8083" \
@@ -26,7 +27,8 @@ The container exposes port `8082` and includes a healthcheck on `/health`.
 
 ## Environment requirements
 
-- PostgreSQL instance accessible via `DATABASE_URL`
+- PostgreSQL runtime role via `LITERATURE_DATABASE_URL` (non-superuser, non-BYPASSRLS, DML-only)
+- Schema-owner connection via `LITERATURE_MIGRATION_DATABASE_URL`, used only for idempotent schema bootstrap
 - Search service at `SEARCH_SERVICE_URL`
 - KG service at `KG_SERVICE_URL`
 - LLM Wiki service at `LLMWIKI_SERVICE_URL`
@@ -37,7 +39,7 @@ The container exposes port `8082` and includes a healthcheck on `/health`.
 On startup, the service:
 
 - initializes an asyncpg PostgreSQL connection pool
-- ensures the `literature_papers` and `literature_ingestion_jobs` tables exist
+- ensures Literature tables/indexes/RLS policies exist using the migration pool; request and worker persistence always uses the restricted runtime pool
 - starts the ingestion orchestrator worker and scheduler
 
 If startup fails to connect to PostgreSQL, the service continues in degraded mode but marks readiness accordingly.

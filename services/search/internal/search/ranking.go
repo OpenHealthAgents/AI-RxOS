@@ -8,7 +8,7 @@ import (
 // ResultRanker performs Reciprocal Rank Fusion (RRF) and multi-signal weighted linear
 // combination across keyword, vector, QMD, graph, and citation hit lists.
 type ResultRanker struct {
-	k            int     // RRF constant (default 60)
+	k              int // RRF constant (default 60)
 	weightBM25     float64
 	weightVector   float64
 	weightGraph    float64
@@ -21,7 +21,7 @@ func NewResultRanker(k int, wBM25, wVector, wGraph, wCitation float64) *ResultRa
 		k = 60
 	}
 	return &ResultRanker{
-		k:            k,
+		k:              k,
 		weightBM25:     wBM25,
 		weightVector:   wVector,
 		weightGraph:    wGraph,
@@ -54,6 +54,34 @@ func (r *ResultRanker) RankRRF(limit int, hitLists ...[]Hit) []Hit {
 				if existing.GraphScore < hit.GraphScore {
 					existing.GraphScore = hit.GraphScore
 				}
+				if existing.EvidenceContext == nil {
+					existing.EvidenceContext = hit.EvidenceContext
+				}
+				existing.Contradictory = existing.Contradictory || hit.Contradictory
+				if len(existing.Aliases) == 0 {
+					existing.Aliases = hit.Aliases
+				}
+				if len(existing.Identifiers) == 0 {
+					existing.Identifiers = hit.Identifiers
+				}
+				if existing.SourceRecordID == "" {
+					existing.SourceRecordID = hit.SourceRecordID
+				}
+				if existing.SourceURL == "" {
+					existing.SourceURL = hit.SourceURL
+				}
+				if existing.PublishedAt == "" {
+					existing.PublishedAt = hit.PublishedAt
+				}
+				if existing.KnowledgeAvailableAt == "" {
+					existing.KnowledgeAvailableAt = hit.KnowledgeAvailableAt
+				}
+				if existing.Metadata == nil {
+					existing.Metadata = hit.Metadata
+				}
+				if len(existing.Highlights) == 0 {
+					existing.Highlights = hit.Highlights
+				}
 				if existing.Source != hit.Source && hit.Source != "" {
 					if existing.Source == "opensearch" || existing.Source == "" {
 						existing.Source = hit.Source
@@ -69,7 +97,9 @@ func (r *ResultRanker) RankRRF(limit int, hitLists ...[]Hit) []Hit {
 	var finalHits []Hit
 	for id, hit := range mergedHits {
 		hit.RRFScore = math.Round(rrfScores[id]*100000) / 100000
-		hit.Score = hit.RRFScore
+		citationSignal := math.Min(1.0, math.Log10(1.0+float64(hit.CitationCount))/4.0)
+		hit.Score = hit.RRFScore + r.weightGraph*hit.GraphScore + r.weightCitation*citationSignal
+		hit.Score = math.Round(hit.Score*10000) / 10000
 		finalHits = append(finalHits, hit)
 	}
 

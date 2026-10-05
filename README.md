@@ -3,9 +3,26 @@
 AI-native drug discovery operating system — literature intelligence, a
 knowledge graph, molecule design, and agentic workflows in one platform. This
 is a Turborepo/pnpm monorepo covering the frontend, gateway, and core
-services described in [`architecture/`](architecture/); the static marketing
-site (`index.html`, `about.html`, `architecture.html`) lives alongside it at
-the repo root and is unrelated to the application code below.
+services described in [`architecture/`](architecture/). The code-backed Phase 0
+constitution and roadmap are in [`docs/`](docs/); the static marketing site
+(`index.html`, `about.html`, `architecture.html`) lives alongside it at the
+repo root and is unrelated to the application code below.
+
+## Phase 0 Architecture Baseline
+
+The current product constitution, ownership boundaries, evidence/data rules,
+API assessment, AI evidence boundary, and incremental roadmap are documented
+in:
+
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+- [`docs/DATA_MODEL.md`](docs/DATA_MODEL.md)
+- [`docs/API_SPEC.md`](docs/API_SPEC.md)
+- [`docs/AI_SYSTEM.md`](docs/AI_SYSTEM.md)
+- [`docs/DEVELOPMENT_PLAN.md`](docs/DEVELOPMENT_PLAN.md)
+
+These documents distinguish implemented, partial, and planned behavior. They
+do not claim that future oncology agents or production infrastructure already
+exist.
 
 ## Stack
 
@@ -115,6 +132,9 @@ python -m pytest -q
 
 ```bash
 cp .env.example .env
+powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/bootstrap-local-env.ps1
+# or, if you prefer a one-off token in PowerShell:
+# $env:SEARCH_INTERNAL_TOKEN = [guid]::NewGuid().ToString("N")
 docker compose up -d --build --wait
 ```
 

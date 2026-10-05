@@ -15,7 +15,11 @@ class Settings(BaseSettings):
     neo4j_user: str = "neo4j"
     neo4j_password: str = "changeme_neo4j"
     opensearch_url: str = "http://opensearch:9200"
+    search_service_url: str = "http://search:8084"
+    search_internal_token: str | None = None
     jwt_secret: str = "change_this_dev_secret_before_deploying"
+    jwt_issuer: str | None = None
+    jwt_audience: str | None = None
 
 
 @lru_cache

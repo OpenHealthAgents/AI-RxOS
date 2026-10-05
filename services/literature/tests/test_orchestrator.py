@@ -89,7 +89,7 @@ async def test_scheduler_triggers_scheduled_job_to_completion(monkeypatch):
 
     job_data: dict[str, Any] = {
         "id": "44444444-4444-4444-4444-444444444444",
-        "source": "pubmed",
+        "source": "biorxiv",
         "query": "cancer",
         "status": "scheduled",
         "created_at": now,
@@ -196,7 +196,7 @@ async def test_scheduler_triggers_scheduled_job_to_completion(monkeypatch):
         async with httpx.AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             response = await client.post(
                 "/api/v1/ingestion",
-                json={"source": "pubmed", "query": "cancer", "schedule": "*/1 * * * *"},
+                json={"source": "biorxiv", "query": "cancer", "schedule": "*/1 * * * *"},
                 headers={"Authorization": "Bearer fake-token"},
             )
 
@@ -220,8 +220,10 @@ def dummy_acquire(connection):
 class DummyConnection:
     def __init__(self, response):
         self.response = response
+        self.executions = []
 
     async def execute(self, *args, **kwargs):
+        self.executions.append((args, kwargs))
         return None
 
     async def fetchrow(self, *args, **kwargs):
@@ -277,6 +279,77 @@ def test_start_ingestion_enqueue_route(monkeypatch):
     assert data["source"] == "pubmed"
     assert data["query"] == "cancer"
     assert data["status"] == "queued"
+
+
+def test_regulatory_ingestion_fails_closed_without_durable_database(monkeypatch):
+    monkeypatch.setattr("app.routers.ingestion._use_postgres", lambda: False)
+    legacy_ingest = Mock()
+    monkeypatch.setattr("app.main.literature_service.ingest", legacy_ingest)
+
+    client = TestClient(app)
+    empty_query_response = client.post(
+        "/api/v1/ingestion",
+        json={"source": "regulatory", "query": "  "},
+        headers={"Authorization": "******"},
+    )
+    response = client.post(
+        "/api/v1/ingestion",
+        json={"source": "regulatory", "query": "application_number:NDA021248"},
+        headers={"Authorization": "******"},
+    )
+
+    assert empty_query_response.status_code == 422
+    assert response.status_code == 503
+    assert "PostgreSQL-backed durable job processor" in response.json()["detail"]
+    legacy_ingest.assert_not_called()
+
+
+def test_regulatory_ingestion_uses_configured_default_page_size(monkeypatch):
+    from app.core.config import Settings
+
+    row = {
+        "id": "32027b04-56f7-4d28-82c5-8cbd0177c4f4",
+        "source": "regulatory",
+        "query": "application_number:NDA021248",
+        "status": "queued",
+        "created_at": datetime.now(timezone.utc),
+        "started_at": None,
+        "completed_at": None,
+        "schedule": None,
+        "next_run_at": None,
+        "documents_total": 0,
+        "documents_processed": 0,
+        "documents_failed": 0,
+        "retry_count": 0,
+        "backoff_until": None,
+        "error_message": None,
+        "dead_letter_count": 0,
+        "dead_letter_items": json.dumps([]),
+    }
+    connection = DummyConnection(row)
+
+    @asynccontextmanager
+    async def fake_acquire(*args, **kwargs):
+        yield connection
+
+    monkeypatch.setattr("app.routers.ingestion._use_postgres", lambda: True)
+    monkeypatch.setattr("app.routers.ingestion.postgres_manager.acquire", fake_acquire)
+    monkeypatch.setattr(
+        "app.routers.ingestion.get_settings",
+        lambda: Settings(fda_regulatory_page_size=13, jwt_secret="test-secret"),
+    )
+    monkeypatch.setattr("app.routers.ingestion.orchestrator.enqueue", Mock())
+    monkeypatch.setattr("app.routers.ingestion.orchestrator.start", AsyncMock())
+
+    response = TestClient(app).post(
+        "/api/v1/ingestion",
+        json={"source": "regulatory", "query": "application_number:NDA021248"},
+        headers={"Authorization": "******"},
+    )
+
+    assert response.status_code == 202
+    checkpoint_json = connection.executions[0][0][9]
+    assert json.loads(checkpoint_json) == {"page_size": 13}
 
 
 def test_dead_letter_items_route(monkeypatch):

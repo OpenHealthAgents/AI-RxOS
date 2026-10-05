@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 from typing import Any
 
@@ -6,12 +7,27 @@ from pydantic import BaseModel
 
 from app.core.config import get_settings
 from app.database.neo4j import neo4j_manager
+from app.database.canonical_store import canonical_store
+from app.services.canonical_projection import CanonicalProjectionWorker
 from app.cypher import queries
-from app.routers import nodes, relationships, graph, imports, versions
+from app.routers import nodes, relationships, graph, imports, versions, canonical
 from app.utils.logging import get_logger
 
 logger = get_logger(__name__)
 settings = get_settings()
+projection_worker = CanonicalProjectionWorker(canonical_store, neo4j_manager, settings)
+
+
+async def _canonical_projection_loop() -> None:
+    while True:
+        try:
+            if canonical_store.pool is not None:
+                await projection_worker.run_once()
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("Canonical projection poll failed")
+        await asyncio.sleep(5)
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
@@ -27,13 +43,25 @@ async def lifespan(_: FastAPI):
         logger.info("Database constraints and indexes initialized successfully.")
     except Exception as e:
         logger.error(f"Failed to initialize database constraints and indexes: {str(e)}", exc_info=True)
-        
-    yield
-    
-    # Close the Neo4j connection pool
-    logger.info("Closing Neo4j connection pool...")
-    await neo4j_manager.close()
-    logger.info("Neo4j connection pool closed.")
+
+    try:
+        await canonical_store.initialize(settings.database_url)
+    except Exception:
+        logger.exception("Canonical PostgreSQL store is unavailable; canonical routes will return 503")
+
+    projection_task = asyncio.create_task(_canonical_projection_loop())
+    try:
+        yield
+    finally:
+        projection_task.cancel()
+        try:
+            await projection_task
+        except asyncio.CancelledError:
+            pass
+
+        logger.info("Closing KG database connections...")
+        await neo4j_manager.close()
+        await canonical_store.close()
 
 app = FastAPI(
     title="AI-RxOS Graph Service",
@@ -50,6 +78,7 @@ app.include_router(relationships.router, prefix="/api/v1/graph")
 app.include_router(graph.router, prefix="/api/v1/graph")
 app.include_router(imports.router, prefix="/api/v1/graph")
 app.include_router(versions.router, prefix="/api/v1/graph")
+app.include_router(canonical.router)
 
 # Legacy compatibility schemas & routes
 class CypherQuery(BaseModel):
@@ -57,25 +86,12 @@ class CypherQuery(BaseModel):
     parameters: dict[str, Any] = {}
 
 @app.post("/api/v1/graph/query", tags=["Legacy Compatibility"])
-async def run_cypher(req: CypherQuery) -> dict[str, list[dict[str, Any]]]:
-    """Executes read-only Cypher. Production deployments should validate
-    against a read-only Neo4j role rather than trusting caller intent."""
-    if any(kw in req.query.upper() for kw in ("CREATE", "DELETE", "MERGE", "SET", "REMOVE")):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="only read queries are permitted here"
-        )
-    try:
-        async with neo4j_manager.get_session() as session:
-            result = await session.run(req.query, req.parameters)
-            rows = [record.data() async for record in result]
-        return {"results": rows}
-    except Exception as e:
-        logger.error(f"Legacy Cypher execution failed: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Cypher execution failed: {str(e)}"
-        )
+async def run_cypher(_: CypherQuery) -> dict[str, list[dict[str, Any]]]:
+    """The legacy arbitrary-Cypher surface is disabled to prevent scope bypass."""
+    raise HTTPException(
+        status_code=status.HTTP_410_GONE,
+        detail="arbitrary Cypher execution is disabled; use scoped graph APIs",
+    )
 
 # Health routes
 @app.get("/healthz", tags=["Health"])

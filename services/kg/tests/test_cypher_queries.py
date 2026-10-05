@@ -16,6 +16,7 @@ import pytest_asyncio
 from neo4j import AsyncGraphDatabase
 
 from app.cypher import queries
+from app.core.neo4j_security import Neo4jScope
 
 NEO4J_TEST_URI = os.environ.get("NEO4J_TEST_URI", "bolt://localhost:7687")
 NEO4J_TEST_USER = os.environ.get("NEO4J_TEST_USER", "neo4j")
@@ -51,8 +52,27 @@ async def driver():
 @pytest_asyncio.fixture
 async def session(driver):
     async with driver.session(database="neo4j") as sess:
+        await sess.run("MATCH (n) DETACH DELETE n")
         await sess.execute_write(queries.create_constraints_and_indexes)
-        yield sess
+        class ScopedSession:
+            def __init__(self, value):
+                self.value = value
+
+            async def execute_read(self, callback, *args, **kwargs):
+                kwargs.setdefault("scope", Neo4jScope(None, system=True))
+                return await self.value.execute_read(callback, *args, **kwargs)
+
+            async def execute_write(self, callback, *args, **kwargs):
+                kwargs.setdefault("scope", Neo4jScope(None, system=True))
+                return await self.value.execute_write(callback, *args, **kwargs)
+
+            async def run(self, *args, **kwargs):
+                return await self.value.run(*args, **kwargs)
+
+        try:
+            yield ScopedSession(sess)
+        finally:
+            await sess.run("MATCH (n) DETACH DELETE n")
 
 
 def _uid() -> str:
@@ -247,6 +267,7 @@ async def test_list_nodes_excludes_graphversion_and_malformed_legacy_nodes(sessi
     # A GraphVersion bookkeeping node, and a legacy-style node seeded
     # directly via Cypher (non-UUID id, no created_at/updated_at) - exactly
     # the shape that broke GET /nodes.
+    legacy_id = f"gene:REGRESSION_TEST_{uuid.uuid4()}"
     await session.run(
         "CREATE (:GraphVersion {id: $id, version_number: 999999, "
         "description: 'regression test version', status: 'active', "
@@ -254,7 +275,8 @@ async def test_list_nodes_excludes_graphversion_and_malformed_legacy_nodes(sessi
         id=_uid(),
     )
     await session.run(
-        "CREATE (:Gene {id: 'gene:REGRESSION_TEST', name: 'BadLegacyGene', organism: 'human'})"
+        "CREATE (:Gene {id: $legacy_id, name: 'BadLegacyGene', organism: 'human'})",
+        legacy_id=legacy_id,
     )
 
     nodes, total = await session.execute_read(queries.list_nodes, max_version=0, label=None, page=1, size=100)
@@ -262,7 +284,7 @@ async def test_list_nodes_excludes_graphversion_and_malformed_legacy_nodes(sessi
     labels = [n["label"] for n in nodes]
 
     assert good_id in ids
-    assert "gene:REGRESSION_TEST" not in ids
+    assert legacy_id not in ids
     assert "GraphVersion" not in labels
     for n in nodes:
         assert "name" in n and n["name"]
@@ -272,4 +294,4 @@ async def test_list_nodes_excludes_graphversion_and_malformed_legacy_nodes(sessi
 
     await session.execute_write(queries.delete_node, node_id=good_id, max_version=0)
     await session.run("MATCH (n:GraphVersion {version_number: 999999}) DETACH DELETE n")
-    await session.run("MATCH (n) WHERE n.id = 'gene:REGRESSION_TEST' DETACH DELETE n")
+    await session.run("MATCH (n) WHERE n.id = $legacy_id DETACH DELETE n", legacy_id=legacy_id)

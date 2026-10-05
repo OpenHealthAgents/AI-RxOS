@@ -12,6 +12,8 @@ from app.schemas.relationships import RelationshipCreate
 from app.schemas.imports import ImportJSONRequest, ImportResponse
 from app.services.version_service import VersionService
 from app.utils.logging import get_logger
+from app.core.canonical_security import CanonicalPrincipal
+from app.core.neo4j_security import tenant_scope
 
 logger = get_logger(__name__)
 
@@ -87,11 +89,12 @@ class ImportService:
         return relationships
 
     @staticmethod
-    async def import_json(req: ImportJSONRequest) -> ImportResponse:
+    async def import_json(req: ImportJSONRequest, principal: CanonicalPrincipal) -> ImportResponse:
         start_time = time.time()
         
         # 1. Create version record
-        version_number = await VersionService.create_new_version(req.description)
+        scope = tenant_scope(principal)
+        version_number = await VersionService.create_new_version(req.description, principal=principal)
         
         # 2. Group rows by label/type (Cypher labels & rel-types can't be
         # parameterized, so each distinct group needs its own UNWIND call)
@@ -134,7 +137,7 @@ class ImportService:
             # 2a. Nodes
             for label, rows in nodes_by_label.items():
                 for batch in _chunks(rows, IMPORT_BATCH_SIZE):
-                    await session.execute_write(queries.merge_import_nodes_batch, label=label, rows=batch)
+                    await session.execute_write(queries.merge_import_nodes_batch, label=label, rows=batch, scope=scope)
                     nodes_imported += len(batch)
 
             # 2b. Relationships
@@ -143,7 +146,8 @@ class ImportService:
                     merged_ids = await session.execute_write(
                         queries.merge_import_relationships_batch,
                         relationship_type=rel_type,
-                        rows=batch
+                        rows=batch,
+                        scope=scope
                     )
                     relationships_imported += len(merged_ids)
                     skipped = len(batch) - len(merged_ids)
@@ -176,7 +180,9 @@ class ImportService:
     async def import_csv(
         nodes_csv_content: Optional[str],
         relationships_csv_content: Optional[str],
-        description: Optional[str] = None
+        description: Optional[str] = None,
+        *,
+        principal: CanonicalPrincipal
     ) -> ImportResponse:
         start_time = time.time()
         
@@ -195,4 +201,4 @@ class ImportService:
             relationships=relationships,
             description=description
         )
-        return await ImportService.import_json(import_req)
+        return await ImportService.import_json(import_req, principal)

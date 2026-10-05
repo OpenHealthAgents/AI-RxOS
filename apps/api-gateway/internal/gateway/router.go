@@ -49,6 +49,7 @@ func NewRouter(cfg config.Config) http.Handler {
 		"/api/v1/ingestion":       cfg.LiteratureServiceURL,
 		"/api/v1/graph":           cfg.KGServiceURL,
 		"/api/v1/ontologies":      cfg.KGServiceURL,
+		"/api/v1/canonical":       cfg.KGServiceURL,
 		"/api/v1/search":          cfg.SearchServiceURL,
 		"/api/v1/agents":          cfg.AgentsServiceURL,
 		"/api/v1/workflows":       cfg.WorkflowsServiceURL,

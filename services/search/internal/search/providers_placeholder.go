@@ -40,6 +40,9 @@ func (p *LLMWikiProvider) Upsert(ctx context.Context, id, title, content string,
 }
 
 func (p *LLMWikiProvider) UpsertForTenant(ctx context.Context, id, title, content string, embedding []float32, tenant TenantScope) error {
+	if err := tenant.ValidateWrite(); err != nil {
+		return err
+	}
 	p.engine.IndexDocumentForTenant(id, title, content, ProviderLLMWiki, embedding, 0, tenant)
 	return nil
 }
@@ -62,10 +65,10 @@ func (p *LLMWikiProvider) SimilaritySearchForTenant(ctx context.Context, embeddi
 	// LLM Wiki service is expected to enforce its own tenant isolation on
 	// org_id/workspace_id server-side — this client only forwards the scope.
 	payload := map[string]any{
-		"embedding":        embedding,
-		"limit":            limit,
-		"organization_id":  tenant.OrgID,
-		"workspace_id":     tenant.WorkspaceID,
+		"embedding":       embedding,
+		"limit":           limit,
+		"organization_id": tenant.OrgID,
+		"workspace_id":    tenant.WorkspaceID,
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
@@ -132,6 +135,9 @@ func (p *GoogleOKFProvider) Upsert(ctx context.Context, id, title, content strin
 }
 
 func (p *GoogleOKFProvider) UpsertForTenant(ctx context.Context, id, title, content string, embedding []float32, tenant TenantScope) error {
+	if err := tenant.ValidateWrite(); err != nil {
+		return err
+	}
 	p.engine.IndexDocumentForTenant(id, title, content, ProviderGoogleOKF, embedding, 0, tenant)
 	return nil
 }

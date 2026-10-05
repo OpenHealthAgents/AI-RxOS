@@ -28,10 +28,15 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-ai_rxos}
       POSTGRES_USER: ${POSTGRES_USER:-ai_rxos}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      POSTGRES_ADMIN_USER: ${POSTGRES_ADMIN_USER:-ai_rxos}
+      POSTGRES_ADMIN_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:-changeme}
+      POSTGRES_APP_USER: ${POSTGRES_APP_USER:-ai_rxos_app}
+      POSTGRES_APP_PASSWORD: ${POSTGRES_APP_PASSWORD:-changeme_app}
     ports: ["15432:5432"]
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - ./infra/postgres/bootstrap-runtime-role.sh:/docker-entrypoint-initdb.d/99-bootstrap-runtime-role.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ai_rxos}"]
       interval: 5s
@@ -88,7 +93,10 @@ services:
       interval: 10s
       timeout: 5s
       retries: 15
-    networks: [ai-rxos]
+    networks:
+      ai-rxos:
+        aliases:
+          - node-0.example.com
     restart: unless-stopped
 
   # ── Go services ──────────────────────────────────────────────────────
@@ -109,9 +117,15 @@ services:
     env_file: .env
     environment:
       PORT: "8084"
+      OPENSEARCH_URL: https://node-0.example.com:9200
+      OPENSEARCH_CA_CERT: /etc/ai-rxos/opensearch-root-ca.pem
+      SEARCH_RETRIEVAL_PROVIDER: llm_wiki
+      SEARCH_INTERNAL_TOKEN: ${SEARCH_INTERNAL_TOKEN:?SEARCH_INTERNAL_TOKEN must be set}
       LLM_WIKI_URL: http://llm-wiki:8092
       LLM_WIKI_API_KEY: ${LLM_WIKI_API_KEY:-}
     ports: ["8084:8084"]
+    volumes:
+      - ./infra/certs/opensearch-demo-root-ca.pem:/etc/ai-rxos/opensearch-root-ca.pem:ro
     depends_on:
       postgres: { condition: service_healthy }
       opensearch: { condition: service_healthy }
@@ -150,6 +164,9 @@ services:
     build: { context: ., dockerfile: services/literature/Dockerfile }
     environment:
       PORT: "8082"
+      DATABASE_URL: ${LITERATURE_DATABASE_URL:-postgresql://ai_rxos_app:${POSTGRES_APP_PASSWORD:-changeme_app}@postgres:5432/${POSTGRES_DB:-ai_rxos}}
+      LITERATURE_DATABASE_URL: ${LITERATURE_DATABASE_URL:-postgresql://ai_rxos_app:${POSTGRES_APP_PASSWORD:-changeme_app}@postgres:5432/${POSTGRES_DB:-ai_rxos}}
+      LITERATURE_MIGRATION_DATABASE_URL: ${LITERATURE_MIGRATION_DATABASE_URL:-postgresql://${POSTGRES_USER:-ai_rxos}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-ai_rxos}}
       LLM_WIKI_URL: http://llm-wiki:8092
       LLM_WIKI_API_KEY: ${LLM_WIKI_API_KEY:-}
     ports: ["8082:8082"]
@@ -165,8 +182,13 @@ services:
     build: { context: ., dockerfile: services/kg/Dockerfile }
     environment:
       PORT: "8083"
+      DATABASE_URL: ${DATABASE_URL:-postgresql://ai_rxos_app:${POSTGRES_APP_PASSWORD:-changeme_app}@postgres:5432/ai_rxos}
+      JWT_SECRET: ${JWT_SECRET:-change_this_dev_secret_before_deploying}
+      SEARCH_SERVICE_URL: http://search:8084
+      SEARCH_INTERNAL_TOKEN: ${SEARCH_INTERNAL_TOKEN:?SEARCH_INTERNAL_TOKEN must be set}
     ports: ["8083:8083"]
     depends_on:
+      postgres: { condition: service_healthy }
       neo4j: { condition: service_healthy }
 
   agents:

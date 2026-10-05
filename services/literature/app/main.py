@@ -54,6 +54,10 @@ literature_service = LiteratureService(
         "crawler_max_pages": settings.crawler_max_pages,
         "crawler_max_depth": settings.crawler_max_depth,
         "crawler_allowed_domains": settings.crawler_allowed_domains,
+        "base_url": settings.pubmed_base_url,
+        "api_key": settings.pubmed_api_key,
+        "email": settings.pubmed_email,
+        "requests_per_second": settings.pubmed_requests_per_second,
     }
 )
 

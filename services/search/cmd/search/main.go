@@ -20,13 +20,14 @@ func main() {
 	cfg := config.Load()
 	ctx := context.Background()
 
-	osClient, err := search.NewClientWithScaling(
+	osClient, err := search.NewClientWithScalingAndCACert(
 		cfg.OpenSearchURL,
 		cfg.OpenSearchUser,
 		cfg.OpenSearchPassword,
 		cfg.IndexName,
 		cfg.ShardCount,
 		cfg.Replicas,
+		cfg.OpenSearchCACert,
 	)
 	if err != nil {
 		slog.Error("opensearch client init failed", "err", err)
@@ -37,8 +38,8 @@ func main() {
 	}
 
 	vectors, err := search.NewRetrievalProvider(ctx, search.ProviderConfig{
-		Provider:      cfg.RetrievalProvider,
-		LLMWikiURL:    cfg.LLMWikiURL,
+		Provider:        cfg.RetrievalProvider,
+		LLMWikiURL:      cfg.LLMWikiURL,
 		LLMWikiAPIKey:   cfg.LLMWikiAPIKey,
 		GoogleOKFURL:    cfg.GoogleOKFURL,
 		GoogleOKFAPIKey: cfg.GoogleOKFAPIKey,
@@ -59,7 +60,7 @@ func main() {
 	defer vectors.Close()
 
 	citations := search.NewCitationSearcher()
-	graph := search.NewGraphSearcher(cfg.KGServiceURL)
+	graph := search.NewGraphSearcher(cfg.KGServiceURL, cfg.InternalToken)
 	ranker := search.NewResultRanker(
 		cfg.RRFConstantK,
 		cfg.WeightBM25,
@@ -69,12 +70,14 @@ func main() {
 	)
 
 	h := &handlers.SearchHandler{
-		OpenSearch:   osClient,
-		Vectors:      vectors,
-		VectorSource: cfg.RetrievalProvider,
-		Citations:    citations,
-		Graph:        graph,
-		Ranker:       ranker,
+		OpenSearch:    osClient,
+		Vectors:       vectors,
+		VectorSource:  cfg.RetrievalProvider,
+		InternalToken: cfg.InternalToken,
+		Citations:     citations,
+		Graph:         graph,
+		Canonical:     search.NewCanonicalContextClient(cfg.KGServiceURL, cfg.InternalToken),
+		Ranker:        ranker,
 	}
 
 	r := chi.NewRouter()

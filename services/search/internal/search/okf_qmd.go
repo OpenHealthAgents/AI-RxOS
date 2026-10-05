@@ -9,44 +9,6 @@ import (
 	"unicode"
 )
 
-// TenantScope identifies the organization/workspace a document or query is
-// scoped to. The zero value means "no tenant" (shared/public content, or an
-// unscoped/admin query) — this keeps every pre-existing caller (including
-// the QMD benchmark suite, which has no tenant concept at all) working
-// unchanged after tenant scoping was added.
-type TenantScope struct {
-	OrgID       string
-	WorkspaceID string
-}
-
-// matches reports whether a document scoped to docTenant is visible to a
-// query scoped to t.
-//
-//   - An unscoped query (t.OrgID == "") sees everything — back-compat for
-//     admin tooling and the benchmark suite.
-//   - Untenanted/shared documents (docTenant.OrgID == "") are visible to
-//     every tenant.
-//   - Otherwise OrgID must match exactly (cross-organization access is
-//     always blocked), and if the document also specifies a workspace,
-//     WorkspaceID must match exactly too (cross-workspace access to
-//     workspace-private content is always blocked). A document with an
-//     OrgID but no WorkspaceID is treated as org-shared.
-func (t TenantScope) matches(docTenant TenantScope) bool {
-	if t.OrgID == "" {
-		return true
-	}
-	if docTenant.OrgID == "" {
-		return true
-	}
-	if t.OrgID != docTenant.OrgID {
-		return false
-	}
-	if docTenant.WorkspaceID == "" {
-		return true
-	}
-	return t.WorkspaceID == docTenant.WorkspaceID
-}
-
 // QMDDocument represents an item indexed in the local QMD engine over OKF concepts.
 type QMDDocument struct {
 	ID        string
@@ -106,7 +68,7 @@ func tokenize(text string) []string {
 // (e.g. the benchmark suite). Use IndexDocumentForTenant to scope a
 // document to an organization/workspace.
 func (e *QMDEngine) IndexDocument(id, title, content, source string, embedding []float32, citations int) {
-	e.IndexDocumentForTenant(id, title, content, source, embedding, citations, TenantScope{})
+	e.IndexDocumentForTenant(id, title, content, source, embedding, citations, TenantScope{System: true})
 }
 
 // IndexDocumentForTenant is IndexDocument with an explicit tenant scope.
@@ -161,6 +123,9 @@ func (e *QMDEngine) SearchBM25(ctx context.Context, query string, limit int) ([]
 
 // SearchBM25ForTenant is SearchBM25 filtered to documents visible to tenant.
 func (e *QMDEngine) SearchBM25ForTenant(ctx context.Context, query string, limit int, tenant TenantScope) ([]Hit, error) {
+	if err := tenant.ValidateRead(); err != nil {
+		return nil, err
+	}
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 
@@ -173,7 +138,18 @@ func (e *QMDEngine) SearchBM25ForTenant(ctx context.Context, query string, limit
 		return nil, nil
 	}
 
-	avgdl := float64(e.totalLength) / float64(e.docCount)
+	visibleDocs := make(map[string]*QMDDocument)
+	visibleLength := 0
+	for id, doc := range e.docs {
+		if tenant.matches(doc.Tenant) {
+			visibleDocs[id] = doc
+			visibleLength += doc.Length
+		}
+	}
+	if len(visibleDocs) == 0 {
+		return nil, nil
+	}
+	avgdl := float64(visibleLength) / float64(len(visibleDocs))
 	scores := make(map[string]float64)
 
 	for _, token := range queryTokens {
@@ -185,7 +161,7 @@ func (e *QMDEngine) SearchBM25ForTenant(ctx context.Context, query string, limit
 		// Count unique docs containing token for IDF
 		seen := make(map[string]bool)
 		for _, id := range docIDs {
-			if _, exists := e.docs[id]; exists {
+			if _, exists := visibleDocs[id]; exists {
 				seen[id] = true
 			}
 		}
@@ -195,10 +171,10 @@ func (e *QMDEngine) SearchBM25ForTenant(ctx context.Context, query string, limit
 		}
 
 		// IDF calculation: ln(1 + (N - n + 0.5) / (n + 0.5))
-		idf := math.Log(1.0 + (float64(e.docCount)-float64(docFreq)+0.5)/(float64(docFreq)+0.5))
+		idf := math.Log(1.0 + (float64(len(visibleDocs))-float64(docFreq)+0.5)/(float64(docFreq)+0.5))
 
 		for id := range seen {
-			doc := e.docs[id]
+			doc := visibleDocs[id]
 			tf := float64(doc.Tokens[token])
 			// BM25 term score
 			num := tf * (e.k1 + 1.0)
@@ -210,9 +186,6 @@ func (e *QMDEngine) SearchBM25ForTenant(ctx context.Context, query string, limit
 	var hits []Hit
 	for id, score := range scores {
 		doc := e.docs[id]
-		if !tenant.matches(doc.Tenant) {
-			continue
-		}
 		hits = append(hits, Hit{
 			ID:      doc.ID,
 			Title:   doc.Title,
@@ -256,6 +229,9 @@ func (e *QMDEngine) SearchVector(ctx context.Context, embedding []float32, limit
 
 // SearchVectorForTenant is SearchVector filtered to documents visible to tenant.
 func (e *QMDEngine) SearchVectorForTenant(ctx context.Context, embedding []float32, limit int, tenant TenantScope) ([]Hit, error) {
+	if err := tenant.ValidateRead(); err != nil {
+		return nil, err
+	}
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 
@@ -299,6 +275,9 @@ func (e *QMDEngine) SearchHybrid(ctx context.Context, query string, embedding []
 
 // SearchHybridForTenant is SearchHybrid filtered to documents visible to tenant.
 func (e *QMDEngine) SearchHybridForTenant(ctx context.Context, query string, embedding []float32, limit int, tenant TenantScope) ([]Hit, error) {
+	if err := tenant.ValidateRead(); err != nil {
+		return nil, err
+	}
 	bm25Hits, _ := e.SearchBM25ForTenant(ctx, query, limit*2, tenant)
 	vectorHits, _ := e.SearchVectorForTenant(ctx, embedding, limit*2, tenant)
 

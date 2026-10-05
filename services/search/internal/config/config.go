@@ -10,7 +10,9 @@ type Config struct {
 	OpenSearchURL      string
 	OpenSearchUser     string
 	OpenSearchPassword string
+	OpenSearchCACert   string
 	IndexName          string
+	InternalToken      string
 
 	// RetrievalProvider selects the semantic-search backend behind
 	// search.RetrievalProvider (see internal/search/provider.go). Defaults
@@ -41,7 +43,9 @@ func Load() Config {
 		OpenSearchURL:      env("OPENSEARCH_URL", "http://opensearch:9200"),
 		OpenSearchUser:     env("OPENSEARCH_USER", "admin"),
 		OpenSearchPassword: env("OPENSEARCH_PASSWORD", "AiRxOS_Admin1!"),
+		OpenSearchCACert:   env("OPENSEARCH_CA_CERT", ""),
 		IndexName:          env("OPENSEARCH_INDEX", "ai-rxos-documents"),
+		InternalToken:      env("SEARCH_INTERNAL_TOKEN", ""),
 
 		RetrievalProvider: env("SEARCH_RETRIEVAL_PROVIDER", "llm_wiki"),
 		LLMWikiURL:        env("LLM_WIKI_URL", "http://llmwiki:8086"),

@@ -5,6 +5,7 @@ from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException
 
+from app.core.config import get_settings
 from app.core.security import get_current_user, get_tenant_context
 from app.database.postgres import postgres_manager
 from app.knowledge.models import TenantContext
@@ -17,6 +18,14 @@ router = APIRouter(prefix="/ingestion", tags=["Ingestion"])
 
 auth_dependency = Depends(get_current_user)
 tenant_dependency = Depends(get_tenant_context)
+
+
+def _scoped_acquire(organization_id: str | None):
+    return (
+        postgres_manager.acquire(organization_id)
+        if organization_id is not None
+        else postgres_manager.acquire()
+    )
 
 
 def _use_postgres() -> bool:
@@ -39,14 +48,50 @@ def _use_postgres() -> bool:
     return False
 
 
+def _verified_job_claims(auth_payload: dict[str, Any], tenant: TenantContext) -> dict[str, Any]:
+    allowed = ("sub", "user_id", "userId", "roles", "permissions", "iss", "aud")
+    claims = {key: auth_payload[key] for key in allowed if key in auth_payload}
+    if tenant.organization_id:
+        claims["organization_id"] = tenant.organization_id
+        claims["organizationId"] = tenant.organization_id
+    return claims
+
+
 @router.post("", response_model=IngestionJobSchema, status_code=202)
 async def start_ingestion(
     req: IngestionRequest,
     auth_payload: dict[str, str] = auth_dependency,
     tenant: TenantContext = tenant_dependency,
 ) -> IngestionJobSchema:
+    if req.source == "regulatory" and not req.query.strip():
+        raise HTTPException(
+            status_code=422,
+            detail="regulatory ingestion requires an explicit openFDA search query",
+        )
+    if req.source == "patent" and not req.query.strip():
+        raise HTTPException(
+            status_code=422,
+            detail="patent ingestion requires a patent identifier or explicit search query",
+        )
+    page_size = req.page_size
+    if (
+        "page_size" not in req.model_fields_set
+        and req.source in {"clinicaltrials", "regulatory", "patent"}
+    ):
+        source_settings = get_settings()
+        if req.source == "clinicaltrials":
+            page_size = source_settings.clinicaltrials_page_size
+        elif req.source == "regulatory":
+            page_size = source_settings.fda_regulatory_page_size
+        elif req.source == "patent":
+            page_size = source_settings.google_patents_page_size
     job_id = uuid4()
     if not _use_postgres():
+        if req.source in {"regulatory", "patent"}:
+            raise HTTPException(
+                status_code=503,
+                detail=f"{req.source} ingestion requires the PostgreSQL-backed durable job processor",
+            )
         from app.database.models import job_store, IngestionJobState
         from app.main import literature_service
         job_id_str = str(job_id)
@@ -71,7 +116,8 @@ async def start_ingestion(
         )
 
     created_at = datetime.now(timezone.utc)
-    async with postgres_manager.acquire() as connection:
+    auth_context = _verified_job_claims(auth_payload, tenant)
+    async with _scoped_acquire(tenant.organization_id) as connection:
         await connection.execute(
             """
             INSERT INTO literature_ingestion_jobs (
@@ -80,27 +126,36 @@ async def start_ingestion(
                 query,
                 status,
                 created_at,
+                organization_id,
                 schedule,
-                next_run_at
+                next_run_at,
+                checkpoint,
+                auth_context
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10::jsonb)
             """,
             job_id,
             req.source,
             req.query,
             JobStatus.SCHEDULED.value if req.schedule else JobStatus.QUEUED.value,
             created_at,
+            tenant.organization_id,
             req.schedule,
             None,
+            json.dumps({"page_size": page_size}),
+            json.dumps(auth_context),
         )
 
     job = OrchestrationJob(
         job_id=str(job_id),
         source=req.source,
         query=req.query,
+        organization_id=tenant.organization_id,
         status=JobStatus.SCHEDULED if req.schedule else JobStatus.QUEUED,
         created_at=created_at,
         schedule=req.schedule,
+        checkpoint={"page_size": page_size},
+        auth_context=auth_context,
     )
 
     if req.schedule:
@@ -109,14 +164,14 @@ async def start_ingestion(
         orchestrator.enqueue(job)
         await orchestrator.start()
 
-    async with postgres_manager.acquire() as connection:
+    async with _scoped_acquire(tenant.organization_id) as connection:
         row = await connection.fetchrow(
             """
             SELECT id::text, source, query, status, created_at,
                 started_at, completed_at, schedule, next_run_at,
                 documents_total, documents_processed,
                 documents_failed, retry_count, backoff_until,
-                error_message, dead_letter_count, dead_letter_items
+                error_message, dead_letter_count, dead_letter_items, checkpoint
             FROM literature_ingestion_jobs
             WHERE id = $1
             """,
@@ -141,13 +196,18 @@ def _row_to_job_schema(row: Any) -> IngestionJobSchema | None:
         record["dead_letter_items"] = json.loads(dead_letter_items)
     elif dead_letter_items is None:
         record["dead_letter_items"] = []
+    checkpoint = record.get("checkpoint")
+    if isinstance(checkpoint, str):
+        record["checkpoint"] = json.loads(checkpoint)
+    elif checkpoint is None:
+        record["checkpoint"] = {}
     return IngestionJobSchema(**record)
 
 
 @router.get("/{job_id}", response_model=IngestionJobSchema)
 async def get_ingestion_job(
     job_id: UUID,
-    auth_payload: dict[str, str] = auth_dependency,
+    tenant: TenantContext = tenant_dependency,
 ) -> IngestionJobSchema:
     if not _use_postgres():
         from app.database.models import job_store
@@ -167,14 +227,14 @@ async def get_ingestion_job(
             result=job_state.result
         )
 
-    async with postgres_manager.acquire() as connection:
+    async with _scoped_acquire(tenant.organization_id) as connection:
         row = await connection.fetchrow(
             """
             SELECT id::text, source, query, status, created_at,
                 started_at, completed_at, schedule, next_run_at,
                 documents_total, documents_processed,
                 documents_failed, retry_count, backoff_until,
-                error_message, dead_letter_count, dead_letter_items
+                error_message, dead_letter_count, dead_letter_items, checkpoint
             FROM literature_ingestion_jobs
             WHERE id = $1
             """,
@@ -190,9 +250,9 @@ async def get_ingestion_job(
 @router.post("/{job_id}/trigger", response_model=IngestionJobSchema)
 async def trigger_ingestion_job(
     job_id: UUID,
-    auth_payload: dict[str, str] = auth_dependency,
+    tenant: TenantContext = tenant_dependency,
 ) -> IngestionJobSchema:
-    job = await orchestrator._load_job_from_db(str(job_id))
+    job = await orchestrator._load_job_from_db(str(job_id), tenant.organization_id)
     if job is None:
         raise HTTPException(status_code=404, detail="ingestion job not found")
 
@@ -200,14 +260,14 @@ async def trigger_ingestion_job(
     orchestrator.enqueue(job)
     await orchestrator.start()
 
-    async with postgres_manager.acquire() as connection:
+    async with _scoped_acquire(tenant.organization_id) as connection:
         row = await connection.fetchrow(
             """
             SELECT id::text, source, query, status, created_at,
                 started_at, completed_at, schedule, next_run_at,
                 documents_total, documents_processed,
                 documents_failed, retry_count, backoff_until,
-                error_message, dead_letter_count, dead_letter_items
+                error_message, dead_letter_count, dead_letter_items, checkpoint
             FROM literature_ingestion_jobs
             WHERE id = $1
             """,
@@ -227,21 +287,21 @@ async def trigger_ingestion_job(
 @router.post("/{job_id}/retry", response_model=IngestionJobSchema)
 async def retry_ingestion_job(
     job_id: UUID,
-    auth_payload: dict[str, str] = auth_dependency,
+    tenant: TenantContext = tenant_dependency,
 ) -> IngestionJobSchema:
     try:
-        await orchestrator.trigger_retry(str(job_id))
+        await orchestrator.trigger_retry(str(job_id), tenant.organization_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
-    async with postgres_manager.acquire() as connection:
+    async with _scoped_acquire(tenant.organization_id) as connection:
         row = await connection.fetchrow(
             """
             SELECT id::text, source, query, status, created_at,
                 started_at, completed_at, schedule, next_run_at,
                 documents_total, documents_processed,
                 documents_failed, retry_count, backoff_until,
-                error_message, dead_letter_count, dead_letter_items
+                error_message, dead_letter_count, dead_letter_items, checkpoint
             FROM literature_ingestion_jobs
             WHERE id = $1
             """,
@@ -257,21 +317,21 @@ async def retry_ingestion_job(
 @router.post("/{job_id}/cancel", response_model=IngestionJobSchema)
 async def cancel_ingestion_job(
     job_id: UUID,
-    auth_payload: dict[str, str] = auth_dependency,
+    tenant: TenantContext = tenant_dependency,
 ) -> IngestionJobSchema:
     try:
-        await orchestrator.cancel(str(job_id))
+        await orchestrator.cancel(str(job_id), tenant.organization_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
-    async with postgres_manager.acquire() as connection:
+    async with _scoped_acquire(tenant.organization_id) as connection:
         row = await connection.fetchrow(
             """
             SELECT id::text, source, query, status, created_at,
                 started_at, completed_at, documents_total,
                 documents_processed, documents_failed, retry_count,
                 backoff_until, error_message, schedule, next_run_at,
-                dead_letter_count, dead_letter_items
+                dead_letter_count, dead_letter_items, checkpoint
             FROM literature_ingestion_jobs
             WHERE id = $1
             """,
@@ -287,7 +347,7 @@ async def cancel_ingestion_job(
 @router.get("/{job_id}/dead-letter")
 async def get_dead_letter_items(
     job_id: UUID,
-    auth_payload: dict[str, str] = auth_dependency,
+    tenant: TenantContext = tenant_dependency,
 ) -> dict[str, object]:
     if not _use_postgres():
         from app.database.models import job_store
@@ -305,7 +365,7 @@ async def get_dead_letter_items(
             "total": len(items),
         }
 
-    async with postgres_manager.acquire() as connection:
+    async with _scoped_acquire(tenant.organization_id) as connection:
         row = await connection.fetchrow(
             """
             SELECT id::text, dead_letter_items
