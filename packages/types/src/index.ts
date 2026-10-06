@@ -314,3 +314,26 @@ export interface ApiError {
   message: string;
   details?: Record<string, unknown>;
 }
+
+export * from "./opportunity";
+export * from "./canonical_domain";
+export * from "./evidence";
+export * from "./temporal";
+export * from "./pubmed";
+export * from "./clinicaltrials";
+export * from "./regulatory";
+export * from "./licensing";
+export * from "./kg";
+export * from "./discover";
+export * from "./biology";
+export * from "./cns";
+export * from "./clinical";
+export * from "./patient_match";
+export * from "./resistance";
+export * from "./combination";
+export * from "./safety";
+export * from "./competitive";
+export * from "./commercial";
+
+
+

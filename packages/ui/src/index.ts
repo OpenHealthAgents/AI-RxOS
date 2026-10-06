@@ -15,12 +15,14 @@ export { Table, TableHeader, TableBody, TableFooter, TableHead, TableRow, TableC
 export { SimpleLineChart, type LineChartProps, SimpleBarChart, type BarChartProps, SimplePieChart, type PieChartProps } from "./components/visualization/Charts";
 export { DataTable } from "./components/visualization/DataTable";
 
-
 export { PaperViewer, type PaperViewerProps } from "./components/scientific/PaperViewer";
 export { DrugCard, type DrugCardProps } from "./components/scientific/DrugCard";
 export { KnowledgeCard, type KnowledgeCardProps } from "./components/scientific/KnowledgeCard";
 
 export { DashboardLayout, type DashboardLayoutProps } from "./components/application/DashboardLayout";
 export { ChatInterface, type ChatInterfaceProps, type Message } from "./components/application/ChatInterface";
-export { Timeline, type TimelineProps, type TimelineEvent } from "./components/application/Timeline";
+export { Timeline as AppTimeline, type TimelineProps as AppTimelineProps, type TimelineEvent } from "./components/application/Timeline";
 export { Notebook, type NotebookProps } from "./components/application/Notebook";
+
+// Scientific Decision Intelligence Design System
+export * from "./components/decision";

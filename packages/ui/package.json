@@ -49,6 +49,7 @@
     "typescript": "^5.7.2"
   },
   "dependencies": {
+    "@ai-rxos/types": "workspace:*",
     "@radix-ui/react-avatar": "^1.2.4",
     "@radix-ui/react-dialog": "^1.1.21",
     "@radix-ui/react-dropdown-menu": "^2.1.22",
