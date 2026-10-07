@@ -1,5 +1,8 @@
 from .engine import OncologyKnowledgeGraphEngine
 from .models import (
+    CANONICAL_ONCOLOGY_RELATIONSHIPS,
+    CANONICAL_RELATIONSHIP_CATEGORY_MAP,
+    AssetOpportunityGraph,
     EdgeEvidenceProvenance,
     GraphNodeSummary,
     GraphPathMatch,
@@ -7,11 +10,16 @@ from .models import (
     KGNode,
     KGNodeType,
     KGRelationshipType,
+    MissingEvidenceProvenanceError,
     OncologyGraphQueryResult,
+    RelationshipProvenanceDetail,
 )
 
 __all__ = [
     "OncologyKnowledgeGraphEngine",
+    "CANONICAL_ONCOLOGY_RELATIONSHIPS",
+    "CANONICAL_RELATIONSHIP_CATEGORY_MAP",
+    "AssetOpportunityGraph",
     "EdgeEvidenceProvenance",
     "GraphNodeSummary",
     "GraphPathMatch",
@@ -19,5 +27,8 @@ __all__ = [
     "KGNode",
     "KGNodeType",
     "KGRelationshipType",
+    "MissingEvidenceProvenanceError",
     "OncologyGraphQueryResult",
+    "RelationshipProvenanceDetail",
 ]
+

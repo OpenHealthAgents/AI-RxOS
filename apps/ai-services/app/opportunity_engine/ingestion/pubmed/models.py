@@ -12,6 +12,7 @@ from app.opportunity_engine.domain.canonical_model import ScientificEvidenceStat
 
 
 class ExtractionCategory(str, Enum):
+    ASSET = "asset"
     DRUG = "drug"
     TARGET = "target"
     GENE = "gene"
@@ -23,10 +24,12 @@ class ExtractionCategory(str, Enum):
     ANIMAL_MODEL = "animal_model"
     EFFICACY = "efficacy"
     TOXICITY = "toxicity"
+    CNS = "cns"
     CNS_EXPOSURE = "cns_exposure"
     CNS_EFFICACY = "cns_efficacy"
     RESISTANCE = "resistance"
     COMBINATION = "combination"
+    CLINICAL_RESULT = "clinical_result"
     CLINICAL_OUTCOME = "clinical_outcome"
 
 
@@ -38,14 +41,61 @@ class IngestionStatus(str, Enum):
 
 
 # ==============================================================================
-# 1. Extracted Scientific Observation
+# 1. Extraction Lineage
+# ==============================================================================
+
+class ExtractionLineage(BaseModel):
+    """
+    Complete immutable provenance lineage tracking how an observation
+    was extracted from raw scientific text.
+    """
+    model_config = ConfigDict(from_attributes=True)
+    lineage_id: UUID = Field(default_factory=uuid4)
+    pmid: str
+    article_title: str
+    journal: str
+    publication_date: date
+    extractor_model: str = "BioExtractor-Ensemble-v2.1"
+    extraction_timestamp: datetime = Field(default_factory=datetime.utcnow)
+    source_location: str
+    raw_verbatim_quote: str
+    provenance_hash: str
+    evidence_source_id: Optional[UUID] = None
+
+
+# ==============================================================================
+# 2. Quality Checks & Verification
+# ==============================================================================
+
+class QualityCheckRule(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    rule_name: str
+    passed: bool
+    score: float = Field(ge=0.0, le=100.0)
+    details: str
+    is_blocking: bool = False
+
+
+class PubMedQualityReport(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    pmid: str
+    overall_quality_score: float = Field(ge=0.0, le=100.0)
+    quality_tier: str = "HIGH"  # HIGH, MEDIUM, LOW, REJECTED
+    quality_passed: bool = True
+    hallucination_check_passed: bool = True
+    rules: List[QualityCheckRule] = Field(default_factory=list)
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+
+
+# ==============================================================================
+# 3. Extracted Scientific Observation
 # ==============================================================================
 
 class ExtractedObservation(BaseModel):
     """
     Extracted scientific claim or parameter anchored to PubMed text.
     Strictly flags AI extraction as NOT ground truth (is_ground_truth=False,
-    epistemic_status='ai_inference') and retains provenance.
+    epistemic_status='ai_inference') and retains full extraction lineage.
     """
     model_config = ConfigDict(from_attributes=True)
     id: UUID = Field(default_factory=uuid4)
@@ -61,19 +111,23 @@ class ExtractedObservation(BaseModel):
     epistemic_status: ScientificEvidenceState = ScientificEvidenceState.AI_INFERENCE
     extraction_model_version: str = "BioExtractor-Ensemble-v2.1"
     resolved_canonical_id: Optional[UUID] = None
+    resolved_canonical_name: Optional[str] = None
+    entity_resolution_confidence: Optional[float] = None
+    resolution_method: Optional[str] = None
     source_citation: str
+    lineage: Optional[ExtractionLineage] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 # ==============================================================================
-# 2. Raw PubMed Article Record
+# 4. Raw PubMed Article Record
 # ==============================================================================
 
 class PubMedArticleRecord(BaseModel):
     """
-    Comprehensive PubMed record capturing all 11 core bibliographical and scientific fields:
+    Comprehensive PubMed record capturing all required fields:
     PMID, title, abstract, authors, journal, publication date, study type,
-    keywords, mesh terms, entities, references where available.
+    MeSH, keywords, entities, references.
     """
     model_config = ConfigDict(from_attributes=True)
     id: UUID = Field(default_factory=uuid4)
@@ -87,11 +141,13 @@ class PubMedArticleRecord(BaseModel):
     study_type: str = "literature"
     keywords: List[str] = Field(default_factory=list)
     mesh_terms: List[str] = Field(default_factory=list)
+    mesh: List[str] = Field(default_factory=list)
     entities: List[str] = Field(default_factory=list)
     references: List[str] = Field(default_factory=list)
     raw_source: Dict[str, Any] = Field(default_factory=dict)
     source_citation: str = ""
     content_hash: str = ""
+    evidence_source_id: Optional[UUID] = None
     retrieval_date: date = Field(default_factory=date.today)
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
@@ -106,6 +162,10 @@ class PubMedArticleRecord(BaseModel):
     def model_post_init(self, __context: Any) -> None:
         if not self.content_hash:
             self.content_hash = self.compute_content_hash()
+        if not self.mesh and self.mesh_terms:
+            self.mesh = list(self.mesh_terms)
+        elif not self.mesh_terms and self.mesh:
+            self.mesh_terms = list(self.mesh)
         if not self.source_citation:
             first_author = self.authors[0] if self.authors else "Unknown"
             year = self.publication_date.year
@@ -113,7 +173,7 @@ class PubMedArticleRecord(BaseModel):
 
 
 # ==============================================================================
-# 3. Ingestion Result & Audit
+# 5. Ingestion Result & Audit
 # ==============================================================================
 
 class IngestionResult(BaseModel):
@@ -128,5 +188,8 @@ class IngestionResult(BaseModel):
     execution_duration_ms: float = 0.0
     audit_id: UUID = Field(default_factory=uuid4)
     observations: List[ExtractedObservation] = Field(default_factory=list)
+    quality_report: Optional[PubMedQualityReport] = None
+    evidence_source_id: Optional[UUID] = None
     error_message: Optional[str] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
+

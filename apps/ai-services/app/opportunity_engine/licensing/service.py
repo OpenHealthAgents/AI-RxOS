@@ -59,14 +59,82 @@ class OwnershipAndLicensingService:
 
         # Reconstruct historical ownership state based on deals as of cutoff
         current_owner = base_profile.originator
-        former_owners = []
+        former_owners: List[str] = []
+        partner: Optional[str] = None
+        licensing_status = (
+            base_profile.licensing_status
+            if not base_profile.deal_history
+            else LicensingStatus.NO_PUBLIC_SIGNAL
+        )
+        status_rationale = f"Reconstructed as of {cutoff_date.isoformat()}"
+        is_verified = base_profile.licensing_status_verified
+        verification_source = base_profile.licensing_verification_source
 
         sorted_deals = sorted(filtered_deals, key=lambda d: d.effective_date)
         for deal in sorted_deals:
-            if deal.deal_type in (DealType.ACQUISITION, DealType.LICENSING_ANNOUNCEMENT, DealType.ASSET_TRANSFER) and deal.licensee:
-                if current_owner not in former_owners and current_owner != deal.licensee:
-                    former_owners.append(current_owner)
-                current_owner = deal.licensee
+            # 1. ACQUISITION
+            if deal.deal_type == DealType.ACQUISITION:
+                if deal.licensee:
+                    if current_owner not in former_owners and current_owner != deal.licensee:
+                        former_owners.append(current_owner)
+                    current_owner = deal.licensee
+                if partner:
+                    licensing_status = LicensingStatus.PARTNERED
+                    status_rationale = f"Acquired by {current_owner}; partnered with {partner}: {deal.summary}"
+                else:
+                    licensing_status = LicensingStatus.NO_PUBLIC_SIGNAL
+                    status_rationale = f"Acquired by {current_owner}: {deal.summary}"
+                is_verified = deal.is_verified_evidence
+                verification_source = deal.source_citation
+
+            # 2. ASSET TRANSFER
+            elif deal.deal_type == DealType.ASSET_TRANSFER:
+                if deal.licensee:
+                    if current_owner not in former_owners and current_owner != deal.licensee:
+                        former_owners.append(current_owner)
+                    current_owner = deal.licensee
+                if deal.licensee == base_profile.originator:
+                    partner = None
+                    licensing_status = LicensingStatus.POTENTIALLY_AVAILABLE
+                    status_rationale = f"Rights reverted to originator {base_profile.originator}: {deal.summary}"
+                else:
+                    licensing_status = LicensingStatus.NO_PUBLIC_SIGNAL
+                    status_rationale = f"Asset transferred to {deal.licensee}: {deal.summary}"
+                is_verified = deal.is_verified_evidence
+                verification_source = deal.source_citation
+
+            # 3. LICENSING / LICENSING_ANNOUNCEMENT
+            elif deal.deal_type in (DealType.LICENSING, DealType.LICENSING_ANNOUNCEMENT):
+                if deal.licensee:
+                    if current_owner not in former_owners and current_owner != deal.licensee:
+                        former_owners.append(current_owner)
+                    current_owner = deal.licensee
+                licensing_status = LicensingStatus.PARTNERED
+                status_rationale = f"Licensed to {deal.licensee}: {deal.summary}"
+                is_verified = deal.is_verified_evidence
+                verification_source = deal.source_citation
+
+            # 4. CO_DEVELOPMENT / PARTNERSHIP
+            elif deal.deal_type in (DealType.CO_DEVELOPMENT, DealType.PARTNERSHIP):
+                partner = deal.partner or deal.licensee
+                licensing_status = LicensingStatus.PARTNERED
+                status_rationale = f"Partnered with {partner}: {deal.summary}"
+                is_verified = deal.is_verified_evidence
+                verification_source = deal.source_citation
+
+            # 5. OPTION / OPTION_AGREEMENT
+            elif deal.deal_type in (DealType.OPTION, DealType.OPTION_AGREEMENT):
+                partner = deal.partner or deal.licensee
+                licensing_status = LicensingStatus.PARTNERED
+                status_rationale = f"Option granted to {partner}: {deal.summary}"
+                is_verified = deal.is_verified_evidence
+                verification_source = deal.source_citation
+
+            # 6. FUNDING
+            elif deal.deal_type == DealType.FUNDING:
+                status_rationale = f"Funding round ({deal.funding_round or 'disclosed'}) for {current_owner}: {deal.summary}"
+                is_verified = deal.is_verified_evidence
+                verification_source = deal.source_citation
 
         # If no deals occurred yet, developer is originator
         developer = current_owner
@@ -78,10 +146,13 @@ class OwnershipAndLicensingService:
             current_owner=current_owner,
             former_owners=former_owners,
             academic_origin=base_profile.academic_origin,
-            licensing_status=base_profile.licensing_status if sorted_deals else LicensingStatus.NO_PUBLIC_LICENSING_SIGNAL,
-            licensing_status_rationale=f"Reconstructed as of {cutoff_date.isoformat()}",
-            licensing_status_verified=base_profile.licensing_status_verified,
-            licensing_verification_source=base_profile.licensing_verification_source,
+            partner=partner,
+            licensing_status=licensing_status if sorted_deals else (
+                base_profile.licensing_status if not base_profile.deal_history else LicensingStatus.NO_PUBLIC_SIGNAL
+            ),
+            licensing_status_rationale=status_rationale,
+            licensing_status_verified=is_verified if sorted_deals else base_profile.licensing_status_verified,
+            licensing_verification_source=verification_source if sorted_deals else base_profile.licensing_verification_source,
             deal_history=sorted_deals,
             patents=filtered_patents,
         )
@@ -121,17 +192,106 @@ class OwnershipAndLicensingService:
 
         return LicensingAndIPGuard.verify_profile(profile, strict=strict)
 
+    def register_profile(self, profile: AssetOwnershipProfile) -> AssetOwnershipProfile:
+        """Registers or updates an asset ownership profile."""
+        verified = LicensingAndIPGuard.verify_profile(profile, strict=False)
+        self._profiles_by_asset[profile.asset_id] = verified
+        return verified
+
     def record_deal_event(self, deal: OwnershipAndDealEvent) -> OwnershipAndDealEvent:
+        """Records a corporate deal or transaction event."""
         profile = self._profiles_by_asset.get(deal.asset_id)
         if profile:
             profile.deal_history.append(deal)
         return deal
 
+    def batch_record_deal_events(self, deals: List[OwnershipAndDealEvent]) -> List[OwnershipAndDealEvent]:
+        """Batch records corporate deal events."""
+        return [self.record_deal_event(d) for d in deals]
+
+    def get_deal_events_by_type(
+        self,
+        deal_type: DealType,
+        cutoff_date: Optional[date] = None,
+    ) -> List[OwnershipAndDealEvent]:
+        """Retrieves all corporate deal events matching a specified deal type."""
+        matching: List[OwnershipAndDealEvent] = []
+        for profile in self._profiles_by_asset.values():
+            for d in profile.deal_history:
+                if d.deal_type == deal_type or d.deal_type.value == deal_type.value:
+                    if cutoff_date is None or d.effective_date <= cutoff_date:
+                        matching.append(d)
+        return matching
+
+    def get_all_deals(
+        self,
+        asset_id: Optional[UUID] = None,
+        cutoff_date: Optional[date] = None,
+    ) -> List[OwnershipAndDealEvent]:
+        """Retrieves all deals, optionally filtered by asset ID and temporal cutoff."""
+        results: List[OwnershipAndDealEvent] = []
+        if asset_id:
+            profile = self._profiles_by_asset.get(asset_id)
+            if profile:
+                deals = [d for d in profile.deal_history if cutoff_date is None or d.effective_date <= cutoff_date]
+                results.extend(deals)
+        else:
+            for profile in self._profiles_by_asset.values():
+                deals = [d for d in profile.deal_history if cutoff_date is None or d.effective_date <= cutoff_date]
+                results.extend(deals)
+        return sorted(results, key=lambda d: d.effective_date)
+
     def record_patent(self, patent: PatentRecord) -> PatentRecord:
+        """Records a patent into the asset's patent portfolio."""
         profile = self._profiles_by_asset.get(patent.asset_id)
         if profile:
-            profile.patents.append(patent)
+            # Audit patent rationale/title for illegal FTO claims
+            LicensingAndIPGuard.audit_fto_statements(patent.title)
+            # Idempotent upsert
+            existing_idx = next(
+                (i for i, p in enumerate(profile.patents) if p.patent_number == patent.patent_number),
+                None,
+            )
+            if existing_idx is not None:
+                profile.patents[existing_idx] = patent
+            else:
+                profile.patents.append(patent)
         return patent
+
+    def batch_record_patents(self, patents: List[PatentRecord]) -> List[PatentRecord]:
+        """Batch records multiple patent records."""
+        return [self.record_patent(p) for p in patents]
+
+    def get_patent(self, patent_number: str) -> Optional[PatentRecord]:
+        """Retrieves a patent by patent number across all assets."""
+        for profile in self._profiles_by_asset.values():
+            for p in profile.patents:
+                if p.patent_number.strip().upper() == patent_number.strip().upper():
+                    return p
+        return None
+
+    def get_patents_by_family(self, family_id: str) -> List[PatentRecord]:
+        """Retrieves all patents belonging to a patent family."""
+        matching = []
+        for profile in self._profiles_by_asset.values():
+            for p in profile.patents:
+                if p.family_id and p.family_id.strip().upper() == family_id.strip().upper():
+                    matching.append(p)
+        return matching
+
+    def get_patents_by_claim_type(
+        self,
+        claim_type: PatentClaimType,
+        cutoff_date: Optional[date] = None,
+    ) -> List[PatentRecord]:
+        """Retrieves all patents classified with a given claim type."""
+        matching = []
+        for profile in self._profiles_by_asset.values():
+            for p in profile.patents:
+                if claim_type in p.claim_types:
+                    if cutoff_date is None or p.filing_date <= cutoff_date:
+                        matching.append(p)
+        return matching
 
     def _load_reference_fixtures(self) -> None:
         """Preloads reference assets: Tucatinib, Zongertinib, and Poziotinib."""

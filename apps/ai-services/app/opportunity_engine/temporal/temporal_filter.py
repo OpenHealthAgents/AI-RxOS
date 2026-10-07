@@ -79,7 +79,9 @@ class TemporalFilter:
 
         # Tucatinib (Approved April 2020, Seagen acquired by Pfizer in Dec 2023)
         if normalized_id == "tucatinib":
-            if cutoff_date < date(2020, 4, 17):
+            if cutoff_date < date(2017, 10, 1):
+                stage = DevelopmentStage.PHASE_I
+            elif cutoff_date < date(2020, 4, 17):
                 stage = DevelopmentStage.PHASE_II
             elif cutoff_date < date(2023, 12, 14):
                 stage = DevelopmentStage.APPROVED

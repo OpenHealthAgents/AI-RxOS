@@ -11,10 +11,12 @@ from app.opportunity_engine.domain.canonical_model import (
     StrategicAction,
 )
 from app.opportunity_engine.domain.schemas import StageTransitionProbabilities
-from .leakage_detector import InformationLeakageDetector
+from .leakage_detector import InformationLeakageDetector, InformationLeakageError
 from .models import (
     EvidenceCutoff,
     HistoricalSnapshot,
+    HistoricalTimelineItem,
+    HistoricalTimelineResponse,
     OutcomeAvailability,
     OutcomeType,
     PredictionSnapshot,
@@ -35,14 +37,40 @@ class TemporalIntelligenceEngine:
     def evaluate_historical_prediction(
         self,
         asset_id: str,
-        cutoff_date: date,
+        cutoff_date: Optional[date] = None,
+        prediction_cutoff: Optional[date] = None,
+        evidence_cutoff: Optional[date] = None,
         strict_audit: bool = True,
+        input_features: Optional[Dict[str, Any]] = None,
+        injected_future_items: Optional[List[Dict[str, Any]]] = None,
     ) -> HistoricalSnapshot:
         """
-        Executes a historical snapshot evaluation as of cutoff_date.
+        Executes a historical snapshot evaluation as of cutoff.
+        A snapshot represents exactly what was knowable at the specified cutoff.
         Strictly suppresses all future publications, trial results, approvals,
         failures, acquisitions, and licensing events.
         """
+        effective_pred_cutoff = prediction_cutoff or cutoff_date
+        if effective_pred_cutoff is None:
+            raise ValueError("Either prediction_cutoff or cutoff_date must be provided.")
+
+        effective_ev_cutoff = evidence_cutoff or effective_pred_cutoff
+
+        # Prevent future information leakage: evidence_cutoff must never exceed prediction_cutoff!
+        if effective_ev_cutoff > effective_pred_cutoff:
+            raise InformationLeakageError(
+                f"CRITICAL LEAKAGE DETECTED: evidence_cutoff ({effective_ev_cutoff}) cannot be later than "
+                f"prediction_cutoff ({effective_pred_cutoff}). Admitting future evidence into past prediction is prohibited."
+            )
+
+        # Audit input features if provided to prevent future feature/training leakage
+        if input_features:
+            InformationLeakageDetector.audit_features(
+                features=input_features,
+                cutoff_date=effective_pred_cutoff,
+                strict=strict_audit,
+            )
+
         normalized_id = asset_id.lower()
         asset = get_fixture_asset(normalized_id)
         if not asset:
@@ -54,38 +82,47 @@ class TemporalIntelligenceEngine:
             else UUID("66666666-6666-6666-6666-666666666666")
 
         cutoff = EvidenceCutoff(
-            cutoff_date=cutoff_date,
+            cutoff_date=effective_ev_cutoff,
             enforce_strict_publication_boundary=True,
             enforce_strict_public_disclosure_boundary=True,
+            description=f"Evidence cutoff at {effective_ev_cutoff} for prediction cutoff {effective_pred_cutoff}",
         )
 
-        # 1. Gather all evidence items
+        # 1. Gather all evidence items (incorporating any injected candidate records)
         raw_items = [ev.model_dump(mode="json") for ev in (asset.supporting_evidence + asset.contradicting_evidence)]
+        if injected_future_items:
+            raw_items.extend(injected_future_items)
 
-        # 2. Filter evidence by temporal boundary
+        # 2. Filter evidence by temporal boundary using evidence_cutoff
         eligible_items, suppressed_items = TemporalFilter.filter_evidence_records(raw_items, cutoff)
 
         # 3. Run strict anti-leakage audit
         audit_report = InformationLeakageDetector.audit_items(
             asset_id=asset_uuid,
-            cutoff_date=cutoff_date,
+            cutoff_date=effective_ev_cutoff,
             eligible_items=eligible_items,
             suppressed_items=suppressed_items,
             strict=strict_audit,
         )
 
-        # 4. Filter known vs future outcomes
+        # 4. Filter known vs future outcomes using prediction_cutoff
+        pred_cutoff_boundary = EvidenceCutoff(
+            cutoff_date=effective_pred_cutoff,
+            enforce_strict_publication_boundary=True,
+            enforce_strict_public_disclosure_boundary=True,
+        )
         asset_outcomes = self.outcomes.get(normalized_id, [])
-        known_outcomes, suppressed_outcomes = TemporalFilter.filter_outcomes(asset_outcomes, cutoff)
+        known_outcomes, suppressed_outcomes = TemporalFilter.filter_outcomes(asset_outcomes, pred_cutoff_boundary)
+        outcome_known_at_cutoff = len(known_outcomes) > 0
 
         # 5. Resolve historical stage, owner, and indication at cutoff
-        hist_state = TemporalFilter.resolve_historical_asset_state(normalized_id, cutoff_date)
+        hist_state = TemporalFilter.resolve_historical_asset_state(normalized_id, effective_pred_cutoff)
 
         # 6. Compute deterministic prediction based strictly on pre-cutoff information
         pred_snapshot, ground_truth, accuracy = self._compute_historical_prediction(
             normalized_id=normalized_id,
             asset_uuid=asset_uuid,
-            cutoff_date=cutoff_date,
+            cutoff_date=effective_pred_cutoff,
             eligible_items=eligible_items,
             suppressed_items=suppressed_items,
             hist_state=hist_state,
@@ -96,6 +133,9 @@ class TemporalIntelligenceEngine:
             asset_id=asset_uuid,
             asset_name=asset.name,
             cutoff=cutoff,
+            prediction_cutoff=effective_pred_cutoff,
+            evidence_cutoff=effective_ev_cutoff,
+            outcome_known_at_cutoff=outcome_known_at_cutoff,
             stage_at_cutoff=hist_state["stage"],
             owner_at_cutoff=hist_state["owner"],
             indication_at_cutoff=hist_state["primary_indication"],
@@ -108,6 +148,93 @@ class TemporalIntelligenceEngine:
         )
 
         return snapshot
+
+    def batch_evaluate_historical(
+        self,
+        asset_ids: List[str],
+        prediction_cutoff: date,
+        evidence_cutoff: Optional[date] = None,
+        strict_audit: bool = True,
+    ) -> List[HistoricalSnapshot]:
+        """
+        Evaluates a cohort of assets at an exact historical cutoff.
+        """
+        snapshots = []
+        for aid in asset_ids:
+            snap = self.evaluate_historical_prediction(
+                asset_id=aid,
+                prediction_cutoff=prediction_cutoff,
+                evidence_cutoff=evidence_cutoff,
+                strict_audit=strict_audit,
+            )
+            snapshots.append(snap)
+        return snapshots
+
+    def get_historical_timeline(self, asset_id: str) -> HistoricalTimelineResponse:
+        """
+        Generates progressive historical evaluation snapshots across key milestones for an asset.
+        """
+        normalized_id = asset_id.lower()
+        asset = get_fixture_asset(normalized_id)
+        if not asset:
+            raise ValueError(f"Asset '{asset_id}' not found in registry.")
+
+        milestones_def: List[tuple[str, date]] = []
+        if normalized_id == "tucatinib":
+            milestones_def = [
+                ("Phase 1 CNS Proof-of-Concept", date(2017, 6, 1)),
+                ("Pre-HER2CLIMB Readout / Partnering Phase", date(2018, 1, 1)),
+                ("Pivotal Trial Readout & Pre-Approval", date(2020, 1, 1)),
+                ("Commercial Execution / Pre-Pfizer Buyout", date(2021, 6, 1)),
+            ]
+        elif normalized_id == "poziotinib":
+            milestones_def = [
+                ("Pre-ZENITH20 Cohort 1 Readout", date(2019, 6, 1)),
+                ("Post-ZENITH20 / Pre-ODAC Advisory Vote", date(2021, 1, 1)),
+                ("Post-Complete Response Letter (CRL)", date(2023, 1, 1)),
+            ]
+        elif normalized_id == "neratinib":
+            milestones_def = [
+                ("Pre-ExteNET Phase 3 Publication", date(2015, 6, 1)),
+                ("Pre-FDA Approval Regulatory Evaluation", date(2017, 1, 1)),
+                ("Post-Approval Niche Monitoring", date(2019, 1, 1)),
+            ]
+        else:  # Zongertinib
+            milestones_def = [
+                ("Preclinical Wild-Type Sparing Validation", date(2021, 6, 1)),
+                ("Phase 1a Dose Escalation / Pre-Phase 1b", date(2023, 6, 1)),
+                ("Phase 1b Beamion Expansion", date(2024, 6, 1)),
+            ]
+
+        items: List[HistoricalTimelineItem] = []
+        for label, m_date in milestones_def:
+            snap = self.evaluate_historical_prediction(
+                asset_id=normalized_id,
+                prediction_cutoff=m_date,
+                evidence_cutoff=m_date,
+                strict_audit=False,
+            )
+            items.append(
+                HistoricalTimelineItem(
+                    milestone_name=label,
+                    prediction_cutoff=snap.prediction_cutoff,
+                    evidence_cutoff=snap.evidence_cutoff,
+                    outcome_known_at_cutoff=snap.outcome_known_at_cutoff,
+                    stage_at_cutoff=snap.stage_at_cutoff,
+                    owner_at_cutoff=snap.owner_at_cutoff,
+                    predicted_action=snap.prediction.predicted_action,
+                    predicted_dps=snap.prediction.predicted_dps,
+                    confidence=snap.prediction.confidence,
+                    known_outcomes_count=len(snap.known_outcomes_at_cutoff),
+                )
+            )
+
+        return HistoricalTimelineResponse(
+            asset_id=asset.id,
+            asset_name=asset.name,
+            milestones=items,
+        )
+
 
     def _compute_historical_prediction(
         self,

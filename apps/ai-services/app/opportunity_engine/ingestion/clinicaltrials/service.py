@@ -85,6 +85,32 @@ class ClinicalTrialsIngestionService:
     def get_resolutions(self, nct_id: str) -> Optional[TrialResolutionSummary]:
         return self.resolutions_by_nct.get(nct_id.strip().upper())
 
+    def get_status_history(self, nct_id: str) -> List[TrialStatusHistory]:
+        """Returns the full chronological history of trial status transitions."""
+        return list(self.history_by_nct.get(nct_id.strip().upper(), []))
+
+    def get_trial_results(self, nct_id: str) -> Dict[str, Any]:
+        """Retrieves outcomes, results summary, and adverse events for a trial."""
+        trial = self.get_trial(nct_id)
+        if not trial:
+            return {}
+        return {
+            "nct_id": trial.nct_id,
+            "results": trial.results,
+            "outcomes": trial.outcomes,
+            "adverse_events": trial.adverse_events,
+            "endpoints": trial.endpoints,
+            "results_first_posted_date": trial.results_first_posted_date,
+        }
+
+    def batch_ingest_trials(
+        self,
+        trials: List[ClinicalTrialRecord],
+        as_of_date: Optional[date] = None,
+    ) -> List[ClinicalTrialRecord]:
+        """Batch ingests clinical trial records."""
+        return [self.ingest_trial(trial, as_of_date=as_of_date) for trial in trials]
+
     def get_trial_status_at_cutoff(
         self,
         nct_id: str,

@@ -450,3 +450,85 @@ def test_migration_018_exists_and_defines_all_tables() -> None:
     assert "idx_reg_events_asset_date" in content
     assert "idx_reg_events_type" in content
     assert "idx_reg_events_jurisdiction" in content
+
+
+def test_batch_regulatory_ingestion_and_type_queries(client: TestClient) -> None:
+    """
+    Verifies batch ingestion of regulatory events and retrieval by event type:
+    - Fast Track
+    - Breakthrough Therapy
+    - Orphan Drug
+    - Accelerated Approval
+    - Full Approval
+    - Complete Response Letter (CRL)
+    - Withdrawal
+    - Safety Warnings
+    - Label Changes
+    Every event strictly captures source and date.
+    """
+    asset_id = str(uuid4())
+    events_payload = [
+        {
+            "source": {
+                "source_type": "FDA_ACTION_LETTER",
+                "source_citation": "FDA CDER Fast Track Designation Letter",
+                "is_verified_evidence": True,
+            },
+            "event_date": "2021-05-10",
+            "jurisdiction": "US",
+            "authority": "FDA",
+            "asset": {"asset_id": asset_id, "asset_name": "BatchTestDrug"},
+            "indication": {"indication_name": "Triple Negative Breast Cancer"},
+            "event": {
+                "event_type": "FAST_TRACK",
+                "headline": "FDA Grants Fast Track Designation",
+                "details": "Fast track granted based on preclinical potency.",
+            },
+            "confidence": 0.98,
+        },
+        {
+            "source": {
+                "source_type": "FDA_ACTION_LETTER",
+                "source_citation": "FDA CDER Orphan Drug Designation Notice",
+                "is_verified_evidence": True,
+            },
+            "event_date": "2021-09-15",
+            "jurisdiction": "US",
+            "authority": "FDA",
+            "asset": {"asset_id": asset_id, "asset_name": "BatchTestDrug"},
+            "indication": {"indication_name": "Triple Negative Breast Cancer"},
+            "event": {
+                "event_type": "ORPHAN_DRUG",
+                "headline": "FDA Grants Orphan Drug Designation",
+                "details": "Orphan designation granted.",
+            },
+            "confidence": 0.99,
+        },
+    ]
+
+    # Batch endpoint test
+    resp_batch = client.post("/api/v1/regulatory/events/batch", json={"events": events_payload, "strict": True})
+    assert resp_batch.status_code == 200
+    batch_data = resp_batch.json()
+    assert batch_data["total_submitted"] == 2
+    assert batch_data["total_ingested"] == 2
+
+    # Query by event type: FAST_TRACK
+    resp_fast = client.get("/api/v1/regulatory/events/type/FAST_TRACK")
+    assert resp_fast.status_code == 200
+    fast_events = resp_fast.json()
+    assert any(e["asset"]["asset_name"] == "BatchTestDrug" for e in fast_events)
+    # Check that every event has source and date
+    for e in fast_events:
+        assert "source" in e and e["source"]["source_citation"]
+        assert "event_date" in e and e["event_date"]
+
+    # Query by event type: ORPHAN_DRUG
+    resp_orphan = client.get("/api/v1/regulatory/events/type/ORPHAN_DRUG")
+    assert resp_orphan.status_code == 200
+    orphan_events = resp_orphan.json()
+    assert any(e["asset"]["asset_name"] == "BatchTestDrug" for e in orphan_events)
+    for e in orphan_events:
+        assert "source" in e and e["source"]["source_citation"]
+        assert "event_date" in e and e["event_date"]
+

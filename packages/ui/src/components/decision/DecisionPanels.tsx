@@ -383,6 +383,10 @@ export function AssetComparisonMatrix({
   );
 }
 
+// Canonical Aliases matching Design System requirements
+export const ComparisonMatrix = AssetComparisonMatrix;
+export type ComparisonMatrixProps = AssetComparisonMatrixProps;
+
 // ==========================================
 // 5. FilterPanel
 // ==========================================

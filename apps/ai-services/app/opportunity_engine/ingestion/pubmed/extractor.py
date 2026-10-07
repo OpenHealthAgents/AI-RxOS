@@ -1,5 +1,4 @@
-from __future__ import annotations
-
+import hashlib
 import re
 from typing import Any, Dict, List, Optional
 from uuid import UUID
@@ -8,6 +7,7 @@ from app.opportunity_engine.domain.canonical_model import ScientificEvidenceStat
 from .models import (
     ExtractedObservation,
     ExtractionCategory,
+    ExtractionLineage,
     PubMedArticleRecord,
 )
 
@@ -111,7 +111,7 @@ class MultiDomainBiomedicalExtractor:
         Returns typed observations with location, confidence, and provenance.
         """
         observations: List[ExtractedObservation] = []
-        full_text = f"{article.title}\n{article.abstract}"
+        full_text = f"{article.title}. {article.abstract}"
         citation = article.source_citation
 
         # Split text into numbered sentences for location tagging
@@ -413,6 +413,19 @@ class MultiDomainBiomedicalExtractor:
             key = (o.extraction_category, o.entity_text, o.source_location)
             if key not in seen:
                 seen.add(key)
+                if o.lineage is None:
+                    prov_str = f"{o.pmid}:{o.source_location}:{o.extracted_text}:{cls.MODEL_VERSION}"
+                    o.lineage = ExtractionLineage(
+                        pmid=o.pmid,
+                        article_title=article.title,
+                        journal=article.journal,
+                        publication_date=article.publication_date,
+                        extractor_model=cls.MODEL_VERSION,
+                        source_location=o.source_location,
+                        raw_verbatim_quote=o.extracted_text,
+                        provenance_hash=hashlib.sha256(prov_str.encode("utf-8")).hexdigest(),
+                        evidence_source_id=article.evidence_source_id,
+                    )
                 unique_observations.append(o)
 
         return unique_observations

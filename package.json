@@ -19,6 +19,12 @@
     "clean": "turbo run clean && rimraf node_modules",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md,yml,yaml}\" --ignore-path .gitignore",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md,yml,yaml}\" --ignore-path .gitignore",
+    "setup": "powershell ./scripts/dev-setup.ps1",
+    "dev:all": "powershell ./scripts/dev-start.ps1",
+    "db:up": "docker compose up -d postgres redis neo4j opensearch",
+    "db:down": "docker compose down",
+    "db:seed": "powershell ./scripts/seed-db.ps1",
+    "test:all": "powershell ./scripts/run-tests.ps1",
     "compose:up": "docker compose up --build -d",
     "compose:down": "docker compose down",
     "compose:logs": "docker compose logs -f"

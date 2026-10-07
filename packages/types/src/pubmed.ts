@@ -2,6 +2,7 @@ import { z } from "zod";
 import { ScientificEvidenceStateSchema } from "./opportunity";
 
 export const ExtractionCategorySchema = z.enum([
+  "asset",
   "drug",
   "target",
   "gene",
@@ -13,10 +14,12 @@ export const ExtractionCategorySchema = z.enum([
   "animal_model",
   "efficacy",
   "toxicity",
+  "cns",
   "cns_exposure",
   "cns_efficacy",
   "resistance",
   "combination",
+  "clinical_result",
   "clinical_outcome",
 ]);
 export type ExtractionCategory = z.infer<typeof ExtractionCategorySchema>;
@@ -28,6 +31,41 @@ export const IngestionStatusSchema = z.enum([
   "FAILED",
 ]);
 export type IngestionStatus = z.infer<typeof IngestionStatusSchema>;
+
+export const ExtractionLineageSchema = z.object({
+  lineage_id: z.string().uuid(),
+  pmid: z.string(),
+  article_title: z.string(),
+  journal: z.string(),
+  publication_date: z.string(),
+  extractor_model: z.string(),
+  extraction_timestamp: z.string(),
+  source_location: z.string(),
+  raw_verbatim_quote: z.string(),
+  provenance_hash: z.string(),
+  evidence_source_id: z.string().uuid().nullable().optional(),
+});
+export type ExtractionLineage = z.infer<typeof ExtractionLineageSchema>;
+
+export const QualityCheckRuleSchema = z.object({
+  rule_name: z.string(),
+  passed: z.boolean(),
+  score: z.number().min(0).max(100),
+  details: z.string(),
+  is_blocking: z.boolean().default(false),
+});
+export type QualityCheckRule = z.infer<typeof QualityCheckRuleSchema>;
+
+export const PubMedQualityReportSchema = z.object({
+  pmid: z.string(),
+  overall_quality_score: z.number().min(0).max(100),
+  quality_tier: z.enum(["HIGH", "MEDIUM", "LOW", "REJECTED"]),
+  quality_passed: z.boolean(),
+  hallucination_check_passed: z.boolean(),
+  rules: z.array(QualityCheckRuleSchema),
+  timestamp: z.string().datetime().optional(),
+});
+export type PubMedQualityReport = z.infer<typeof PubMedQualityReportSchema>;
 
 export const ExtractedObservationSchema = z.object({
   id: z.string().uuid(),
@@ -43,7 +81,11 @@ export const ExtractedObservationSchema = z.object({
   epistemic_status: ScientificEvidenceStateSchema.default("ai_inference"),
   extraction_model_version: z.string().default("BioExtractor-Ensemble-v2.1"),
   resolved_canonical_id: z.string().uuid().nullable().optional(),
+  resolved_canonical_name: z.string().nullable().optional(),
+  entity_resolution_confidence: z.number().min(0).max(1.0).optional(),
+  resolution_method: z.string().optional(),
   source_citation: z.string(),
+  lineage: ExtractionLineageSchema.optional(),
   created_at: z.string().datetime().optional(),
 });
 export type ExtractedObservation = z.infer<typeof ExtractedObservationSchema>;
@@ -60,6 +102,7 @@ export const PubMedArticleRecordSchema = z.object({
   study_type: z.string().default("literature"),
   keywords: z.array(z.string()).default([]),
   mesh_terms: z.array(z.string()).default([]),
+  mesh: z.array(z.string()).default([]),
   entities: z.array(z.string()).default([]),
   references: z.array(z.string()).default([]),
   raw_source: z.record(z.string(), z.unknown()).default({}),
@@ -81,7 +124,16 @@ export const IngestionResultSchema = z.object({
   execution_duration_ms: z.number().default(0.0),
   audit_id: z.string().uuid(),
   observations: z.array(ExtractedObservationSchema).default([]),
+  quality_report: PubMedQualityReportSchema.optional(),
   error_message: z.string().nullable().optional(),
   created_at: z.string().datetime().optional(),
 });
 export type IngestionResult = z.infer<typeof IngestionResultSchema>;
+
+export const PubMedBatchIngestRequestSchema = z.object({
+  articles: z.array(PubMedArticleRecordSchema),
+  force_reprocess: z.boolean().default(false),
+  run_quality_checks: z.boolean().default(true),
+});
+export type PubMedBatchIngestRequest = z.infer<typeof PubMedBatchIngestRequestSchema>;
+

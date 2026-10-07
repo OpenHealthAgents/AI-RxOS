@@ -532,24 +532,130 @@ def test_end_to_end_trial_ingestion_and_resolution() -> None:
 
 def test_migration_file_exists_and_defines_all_tables() -> None:
     """
-    Verifies that services/kg/migrations/017_clinicaltrials_ingestion.sql
-    exists and defines all 6 required tables and indexes.
+    Verifies that services/kg/migrations/017_clinicaltrials_ingestion.sql and
+    037_clinicaltrials_production_history.sql exist and define tables and indexes.
     """
     repo_root = Path(__file__).resolve().parents[3]
-    migration_path = repo_root / "services" / "kg" / "migrations" / "017_clinicaltrials_ingestion.sql"
+    migration_path_017 = repo_root / "services" / "kg" / "migrations" / "017_clinicaltrials_ingestion.sql"
+    migration_path_037 = repo_root / "services" / "kg" / "migrations" / "037_clinicaltrials_production_history.sql"
 
-    assert migration_path.exists(), f"Migration file not found at {migration_path}"
-    content = migration_path.read_text(encoding="utf-8")
+    assert migration_path_017.exists(), f"Migration file not found at {migration_path_017}"
+    content_017 = migration_path_017.read_text(encoding="utf-8")
 
     # Verify tables
-    assert "CREATE TABLE IF NOT EXISTS clinical_trials_rich" in content
-    assert "CREATE TABLE IF NOT EXISTS trial_status_history" in content
-    assert "CREATE TABLE IF NOT EXISTS trial_asset_mappings" in content
-    assert "CREATE TABLE IF NOT EXISTS trial_indication_mappings" in content
-    assert "CREATE TABLE IF NOT EXISTS trial_biomarker_mappings" in content
-    assert "CREATE TABLE IF NOT EXISTS trial_company_mappings" in content
+    assert "CREATE TABLE IF NOT EXISTS clinical_trials_rich" in content_017
+    assert "CREATE TABLE IF NOT EXISTS trial_status_history" in content_017
+    assert "CREATE TABLE IF NOT EXISTS trial_asset_mappings" in content_017
+    assert "CREATE TABLE IF NOT EXISTS trial_indication_mappings" in content_017
+    assert "CREATE TABLE IF NOT EXISTS trial_biomarker_mappings" in content_017
+    assert "CREATE TABLE IF NOT EXISTS trial_company_mappings" in content_017
 
     # Verify indexes
-    assert "idx_trials_rich_nct" in content
-    assert "idx_trial_history_nct_date" in content
-    assert "idx_trial_asset_nct" in content
+    assert "idx_trials_rich_nct" in content_017
+    assert "idx_trial_history_nct_date" in content_017
+    assert "idx_trial_asset_nct" in content_017
+
+    assert migration_path_037.exists(), f"Migration file not found at {migration_path_037}"
+    content_037 = migration_path_037.read_text(encoding="utf-8")
+    assert "ALTER TABLE clinical_trials_rich" in content_037
+    assert "ALTER TABLE trial_status_history" in content_037
+    assert "idx_trial_history_nct_asof" in content_037
+
+
+def test_batch_trial_ingestion_and_status_history() -> None:
+    """
+    Verifies batch ingestion of trials and retrieval of full status history.
+    """
+    service = ClinicalTrialsIngestionService()
+    trial1 = sample_beamion_lung01_trial()
+    trial2 = ClinicalTrialRecord(
+        nct_id="NCT02614794",
+        study_title="HER2CLIMB: Tucatinib in HER2+ Breast Cancer",
+        sponsor="Seattle Genetics",
+        phase_raw="Phase 3",
+        status="COMPLETED",
+        interventions=[InterventionItem(name="Tucatinib")],
+    )
+
+    batch_res = service.batch_ingest_trials([trial1, trial2], as_of_date=date(2024, 1, 15))
+    assert len(batch_res) == 2
+    assert service.get_trial("NCT04886804") is not None
+    assert service.get_trial("NCT02614794") is not None
+
+    # Check status history retrieval
+    history = service.get_status_history("NCT04886804")
+    assert len(history) == 1
+    assert history[0].overall_status == "ACTIVE_NOT_RECRUITING"
+
+    # Check results retrieval
+    results_dict = service.get_trial_results("NCT04886804")
+    assert results_dict["nct_id"] == "NCT04886804"
+    assert len(results_dict["outcomes"]) == 3
+    assert len(results_dict["adverse_events"]) == 3
+    assert results_dict["results"]["summary"] is not None
+
+
+def test_clinicaltrials_fastapi_endpoints() -> None:
+    """
+    Verifies the FastAPI router endpoints for ClinicalTrials.gov ingestion:
+    - POST /api/v1/ingest/clinicaltrials/trial
+    - POST /api/v1/ingest/clinicaltrials/batch
+    - GET /api/v1/ingest/clinicaltrials/{nct_id}
+    - GET /api/v1/ingest/clinicaltrials/{nct_id}/history
+    - GET /api/v1/ingest/clinicaltrials/{nct_id}/resolutions
+    - GET /api/v1/ingest/clinicaltrials/{nct_id}/results
+    """
+    from fastapi.testclient import TestClient
+    from app.main import app
+
+    client = TestClient(app)
+    trial = sample_beamion_lung01_trial()
+
+    # Ingest trial
+    resp_ingest = client.post("/api/v1/ingest/clinicaltrials/trial", json=trial.model_dump(mode="json"))
+    assert resp_ingest.status_code == 200
+    ingested_data = resp_ingest.json()
+    assert ingested_data["nct_id"] == "NCT04886804"
+    assert ingested_data["normalized_stage"] == "Phase II"
+
+    # Get trial
+    resp_get = client.get("/api/v1/ingest/clinicaltrials/NCT04886804")
+    assert resp_get.status_code == 200
+    assert resp_get.json()["nct_id"] == "NCT04886804"
+
+    # Get history
+    resp_hist = client.get("/api/v1/ingest/clinicaltrials/NCT04886804/history")
+    assert resp_hist.status_code == 200
+    assert len(resp_hist.json()) >= 1
+
+    # Get history with cutoff
+    resp_cutoff = client.get("/api/v1/ingest/clinicaltrials/NCT04886804/history?cutoff_date=2020-01-01")
+    assert resp_cutoff.status_code == 200
+    assert len(resp_cutoff.json()) == 0
+
+    # Get resolutions
+    resp_res = client.get("/api/v1/ingest/clinicaltrials/NCT04886804/resolutions")
+    assert resp_res.status_code == 200
+    res_data = resp_res.json()
+    assert any(a["canonical_name"] == "Zongertinib" for a in res_data["assets"])
+    assert any(c["company_name"] == "Boehringer Ingelheim" for c in res_data["companies"])
+
+    # Get results
+    resp_results = client.get("/api/v1/ingest/clinicaltrials/NCT04886804/results")
+    assert resp_results.status_code == 200
+    res_payload = resp_results.json()
+    assert len(res_payload["outcomes"]) == 3
+    assert len(res_payload["adverse_events"]) == 3
+
+    # Batch endpoint
+    trial_copy = sample_beamion_lung01_trial()
+    trial_copy.nct_id = "NCT99999999"
+    resp_batch = client.post(
+        "/api/v1/ingest/clinicaltrials/batch",
+        json={"trials": [trial_copy.model_dump(mode="json")]},
+    )
+    assert resp_batch.status_code == 200
+    batch_data = resp_batch.json()
+    assert batch_data["total_submitted"] == 1
+    assert batch_data["total_ingested"] == 1
+

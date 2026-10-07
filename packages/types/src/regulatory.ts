@@ -128,3 +128,17 @@ export const AssetRegulatoryStatusSummarySchema = z.object({
   total_verifiable_events: z.number().int(),
 });
 export type AssetRegulatoryStatusSummary = z.infer<typeof AssetRegulatoryStatusSummarySchema>;
+
+export const BatchRegulatoryIngestRequestSchema = z.object({
+  events: z.array(RegulatoryEventRecordSchema),
+  strict: z.boolean().default(false),
+});
+export type BatchRegulatoryIngestRequest = z.infer<typeof BatchRegulatoryIngestRequestSchema>;
+
+export const BatchRegulatoryIngestResponseSchema = z.object({
+  total_submitted: z.number().int(),
+  total_ingested: z.number().int(),
+  events: z.array(RegulatoryEventRecordSchema),
+});
+export type BatchRegulatoryIngestResponse = z.infer<typeof BatchRegulatoryIngestResponseSchema>;
+

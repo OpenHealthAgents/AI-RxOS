@@ -18,42 +18,29 @@ export function Sidebar({
   const pathname = usePathname();
 
   const navItems = [
-    { id: "overview", label: "Asset Overview", icon: "squares" },
-    { id: "compare", label: "Compare Assets", icon: "columns" },
-    { id: "biology", label: "Biology & MOA", icon: "dna" },
-    { id: "preclinical", label: "Preclinical Evidence", icon: "beaker" },
-    { id: "clinical", label: "Clinical Development", icon: "activity" },
-    { id: "patient-match", label: "Patient Match", icon: "users" },
-    { id: "safety", label: "Safety & Toxicity", icon: "shield" },
-    { id: "resistance", label: "Resistance & Combinations", icon: "refresh" },
-    { id: "landscape", label: "Competitive Landscape", icon: "chart" },
-    { id: "regulatory", label: "Regulatory & IP", icon: "document" },
-    { id: "evidence", label: "Evidence & Sources", icon: "book" },
+    { id: "overview", label: "ASSET OVERVIEW", icon: "squares" },
+    { id: "compare", label: "COMPARE ASSETS", icon: "columns" },
+    { id: "biology", label: "BIOLOGY & MOA", icon: "dna" },
+    { id: "preclinical", label: "PRECLINICAL EVIDENCE", icon: "beaker" },
+    { id: "clinical", label: "CLINICAL DEVELOPMENT", icon: "activity" },
+    { id: "patient-match", label: "PATIENT MATCH", icon: "users" },
+    { id: "safety", label: "SAFETY & TOXICITY", icon: "shield" },
+    { id: "resistance", label: "RESISTANCE & COMBINATIONS", icon: "refresh" },
+    { id: "landscape", label: "COMPETITIVE LANDSCAPE", icon: "chart" },
+    { id: "regulatory", label: "REGULATORY & IP", icon: "document" },
+    { id: "evidence", label: "EVIDENCE & SOURCES", icon: "book" },
   ];
 
   const handleItemClick = (id: string) => {
     if (id === "evidence") {
+      if (pathname !== "/evaluate") {
+        router.push("/evaluate?section=evidence");
+      }
+      onSelectSection("evidence");
       onOpenEvidenceModal();
       return;
     }
 
-    if (id === "compare") {
-      if (pathname !== "/compare") {
-        router.push("/compare");
-      }
-      onSelectSection("compare");
-      return;
-    }
-
-    if (id === "patient-match") {
-      if (pathname !== "/patient-match" && pathname !== "/evaluate") {
-        router.push("/patient-match");
-      }
-      onSelectSection("patient-match");
-      return;
-    }
-
-    // For evaluation workspace sections
     if (pathname !== "/evaluate") {
       router.push(`/evaluate?section=${id}`);
     }

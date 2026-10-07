@@ -6,7 +6,7 @@ from enum import Enum
 from typing import Any, Dict, List, Optional
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 MANDATORY_FTO_DISCLAIMER = (
@@ -29,15 +29,30 @@ class LicensingStatus(str, Enum):
     POTENTIALLY_AVAILABLE = "POTENTIALLY_AVAILABLE"
     PARTNERED = "PARTNERED"
     OWNERSHIP_UNCLEAR = "OWNERSHIP_UNCLEAR"
+    NO_PUBLIC_SIGNAL = "NO_PUBLIC_SIGNAL"
     NO_PUBLIC_LICENSING_SIGNAL = "NO_PUBLIC_LICENSING_SIGNAL"
     UNKNOWN = "UNKNOWN"
 
 
 class DealType(str, Enum):
+    """
+    Public company events and transaction types impacting asset ownership and partnering:
+    - FUNDING
+    - ACQUISITION
+    - LICENSING (and LICENSING_ANNOUNCEMENT)
+    - PARTNERSHIP
+    - ASSET_TRANSFER
+    - CO_DEVELOPMENT
+    - OPTION (and OPTION_AGREEMENT)
+    """
+    FUNDING = "FUNDING"
     ACQUISITION = "ACQUISITION"
-    ASSET_TRANSFER = "ASSET_TRANSFER"
+    LICENSING = "LICENSING"
     LICENSING_ANNOUNCEMENT = "LICENSING_ANNOUNCEMENT"
+    PARTNERSHIP = "PARTNERSHIP"
+    ASSET_TRANSFER = "ASSET_TRANSFER"
     CO_DEVELOPMENT = "CO_DEVELOPMENT"
+    OPTION = "OPTION"
     OPTION_AGREEMENT = "OPTION_AGREEMENT"
 
 
@@ -117,9 +132,9 @@ class PatentRecord(BaseModel):
 
 class OwnershipAndDealEvent(BaseModel):
     """
-    Corporate transaction or alliance impacting asset ownership rights:
-    acquisition, asset transfer, licensing announcement, co-development,
-    option agreement.
+    Corporate transaction or public event impacting asset ownership rights:
+    funding, acquisition, licensing, partnership, asset transfer,
+    co-development, option.
     """
     model_config = ConfigDict(from_attributes=True)
     id: UUID = Field(default_factory=uuid4)
@@ -133,11 +148,27 @@ class OwnershipAndDealEvent(BaseModel):
     disclosed_upfront_usd: Optional[int] = None
     disclosed_milestones_usd: Optional[int] = None
     royalty_rate_pct: Optional[str] = None
+    funding_round: Optional[str] = None
+    investors: List[str] = Field(default_factory=list)
     summary: str
     source_citation: str
     source_url: Optional[str] = None
     is_verified_evidence: bool = True
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+    @field_validator("deal_type", mode="before")
+    @classmethod
+    def normalize_deal_type(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            clean = v.strip().upper().replace(" ", "_").replace("-", "_")
+            if clean in ("LICENSE", "LICENSING_AGREEMENT"):
+                return DealType.LICENSING
+            if clean in DealType.__members__:
+                return DealType[clean]
+            for m in DealType:
+                if m.value == clean:
+                    return m
+        return v
 
 
 # ==============================================================================
@@ -158,6 +189,7 @@ class AssetOwnershipProfile(BaseModel):
     current_owner: str
     former_owners: List[str] = Field(default_factory=list)
     academic_origin: Optional[str] = None
+    partner: Optional[str] = None
     licensing_status: LicensingStatus = LicensingStatus.UNKNOWN
     licensing_status_rationale: str = ""
     licensing_status_verified: bool = False
@@ -168,6 +200,18 @@ class AssetOwnershipProfile(BaseModel):
     content_hash: str = ""
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+    @field_validator("licensing_status", mode="before")
+    @classmethod
+    def normalize_licensing_status(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            clean = v.strip().upper().replace(" ", "_").replace("-", "_")
+            if clean in LicensingStatus.__members__:
+                return LicensingStatus[clean]
+            for m in LicensingStatus:
+                if m.value == clean:
+                    return m
+        return v
 
     def compute_content_hash(self) -> str:
         hasher = hashlib.sha256()

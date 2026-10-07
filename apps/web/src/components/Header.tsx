@@ -20,18 +20,18 @@ export function Header({
   const pathname = usePathname();
 
   const tabs = [
-    { id: "discover", label: "Discover", href: "/discover" },
-    { id: "evaluate", label: "Evaluate", href: "/evaluate" },
-    { id: "patient-match", label: "Patient Match", href: "/patient-match" },
-    { id: "compare", label: "Compare", href: "/compare" },
-    { id: "backtest", label: "Backtest", href: "/backtest" },
-    { id: "opportunities", label: "Opportunities", href: "/opportunities" },
+    { id: "discover", label: "DISCOVER", href: "/discover" },
+    { id: "evaluate", label: "EVALUATE", href: "/evaluate" },
+    { id: "patient-match", label: "PATIENT MATCH", href: "/patient-match" },
+    { id: "compare", label: "COMPARE", href: "/compare" },
+    { id: "backtest", label: "BACKTEST", href: "/backtest" },
+    { id: "opportunities", label: "OPPORTUNITIES", href: "/opportunities" },
   ];
 
   const getIsActive = (tabId: string, tabHref: string) => {
     if (activeTab) return activeTab === tabId;
     if (pathname === tabHref) return true;
-    if (tabId === "compare" && pathname === "/") return true;
+    if (tabId === "discover" && (pathname === "/" || pathname === "")) return true;
     return false;
   };
 
@@ -39,7 +39,7 @@ export function Header({
     <header className="sticky top-0 z-40 w-full border-b border-slate-800 bg-[#0c1322] px-6 py-2.5 text-white shadow-md">
       <div className="flex items-center justify-between gap-6">
         {/* Brand */}
-        <Link href="/compare" className="flex items-center gap-3 group">
+        <Link href="/discover" className="flex items-center gap-3 group">
           <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-600 font-bold text-white shadow-inner group-hover:bg-blue-500 transition">
             <span className="text-lg">N</span>
           </div>

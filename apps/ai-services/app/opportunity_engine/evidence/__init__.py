@@ -22,8 +22,34 @@ from .models import (
     Evidence,
     EvidenceLineageGraph,
 )
+from app.opportunity_engine.temporal.models import EvidenceTemporalMetadata
 from .lineage import EvidenceLineageEngine, OrphanedScoreError
+from .scoring import (
+    DirectnessLevel,
+    EvidenceQualityAppraisal,
+    EvidenceQualityEngine,
+    LowEvidenceConversionError,
+    ModelRelevance,
+    ReplicationStatus,
+    StudyDesignType,
+)
+from .contradiction import (
+    ContradictionEngine,
+    ContradictionRecord,
+    ContradictionReport,
+    ContradictoryClaim,
+    DisagreementCategory,
+    DisagreementResolutionStatus,
+    SilentSelectionViolationError,
+)
 from .service import EvidenceService
+from .ranking import (
+    EvidenceRankingEngine,
+    EvidenceRankingRecord,
+    EvidenceRankingResult,
+    EvidenceRankingTier,
+    RankingDimensionDetail,
+)
 
 __all__ = [
     "SourceType",
@@ -35,6 +61,7 @@ __all__ = [
     "ClaimType",
     "LineageStep",
     "EvidenceTemporalScope",
+    "EvidenceTemporalMetadata",
     "EvidenceQuality",
     "EvidenceConfidence",
     "EvidenceCitation",
@@ -50,5 +77,25 @@ __all__ = [
     "EvidenceLineageGraph",
     "EvidenceLineageEngine",
     "OrphanedScoreError",
+    "DirectnessLevel",
+    "EvidenceQualityAppraisal",
+    "EvidenceQualityEngine",
+    "LowEvidenceConversionError",
+    "ModelRelevance",
+    "ReplicationStatus",
+    "StudyDesignType",
+    "ContradictionEngine",
+    "ContradictionRecord",
+    "ContradictionReport",
+    "ContradictoryClaim",
+    "DisagreementCategory",
+    "DisagreementResolutionStatus",
+    "SilentSelectionViolationError",
     "EvidenceService",
+    "EvidenceRankingEngine",
+    "EvidenceRankingRecord",
+    "EvidenceRankingResult",
+    "EvidenceRankingTier",
+    "RankingDimensionDetail",
 ]
+

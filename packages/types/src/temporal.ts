@@ -22,12 +22,19 @@ export type OutcomeType = z.infer<typeof OutcomeTypeSchema>;
 export const LeakageViolationTypeSchema = z.enum([
   "future_publication",
   "future_trial_result",
+  "future_clinical_result",
   "future_regulatory_decision",
+  "future_approval",
+  "future_failure",
   "future_outcome_disclosure",
   "future_acquisition",
+  "future_company_event",
   "future_licensing_deal",
+  "future_patent_event",
   "future_biomarker_discovery",
   "future_observation_date",
+  "future_feature_input",
+  "future_training_sample",
 ]);
 export type LeakageViolationType = z.infer<typeof LeakageViolationTypeSchema>;
 
@@ -37,10 +44,47 @@ export const TemporalCoordinatesSchema = z.object({
   trial_date: z.string().nullable().optional(),
   outcome_date: z.string().nullable().optional(),
   regulatory_date: z.string().nullable().optional(),
+  licensing_date: z.string().nullable().optional(),
   prediction_cutoff_date: z.string(),
   publicly_known_date: z.string().nullable().optional(),
+  public_availability_date: z.string().nullable().optional(),
 });
 export type TemporalCoordinates = z.infer<typeof TemporalCoordinatesSchema>;
+
+export const EvidenceTemporalMetadataSchema = z.object({
+  publication_date: z.string().nullable().optional(),
+  observation_date: z.string().nullable().optional(),
+  trial_date: z.string().nullable().optional(),
+  outcome_date: z.string().nullable().optional(),
+  regulatory_date: z.string().nullable().optional(),
+  licensing_date: z.string().nullable().optional(),
+  prediction_cutoff: z.string().nullable().optional(),
+  public_availability_date: z.string().nullable().optional(),
+});
+export type EvidenceTemporalMetadata = z.infer<typeof EvidenceTemporalMetadataSchema>;
+
+export const TemporalDateFieldSchema = z.enum([
+  "publication_date",
+  "observation_date",
+  "trial_date",
+  "outcome_date",
+  "regulatory_date",
+  "licensing_date",
+  "prediction_cutoff",
+  "public_availability_date",
+  "any_date",
+]);
+export type TemporalDateField = z.infer<typeof TemporalDateFieldSchema>;
+
+export const TemporalQueryFilterSchema = z.object({
+  as_of_date: z.string().optional(),
+  start_date: z.string().optional(),
+  end_date: z.string().optional(),
+  date_field: TemporalDateFieldSchema.default("any_date"),
+  enforce_prediction_cutoff: z.boolean().default(true),
+  prediction_cutoff: z.string().optional(),
+});
+export type TemporalQueryFilter = z.infer<typeof TemporalQueryFilterSchema>;
 
 export const EvidenceCutoffSchema = z.object({
   cutoff_date: z.string(),
@@ -112,6 +156,9 @@ export const HistoricalSnapshotSchema = z.object({
   asset_id: z.string().uuid(),
   asset_name: z.string(),
   cutoff: EvidenceCutoffSchema,
+  prediction_cutoff: z.string().optional(),
+  evidence_cutoff: z.string().optional(),
+  outcome_known_at_cutoff: z.boolean().default(false),
   stage_at_cutoff: DevelopmentStageSchema,
   owner_at_cutoff: z.string(),
   indication_at_cutoff: z.string(),
@@ -124,3 +171,41 @@ export const HistoricalSnapshotSchema = z.object({
   created_at: z.string().datetime().optional(),
 });
 export type HistoricalSnapshot = z.infer<typeof HistoricalSnapshotSchema>;
+
+export const HistoricalEvaluationRequestSchema = z.object({
+  asset_id: z.string(),
+  prediction_cutoff: z.string(),
+  evidence_cutoff: z.string().optional(),
+  strict_audit: z.boolean().default(true),
+});
+export type HistoricalEvaluationRequest = z.infer<typeof HistoricalEvaluationRequestSchema>;
+
+export const HistoricalBatchEvaluationRequestSchema = z.object({
+  asset_ids: z.array(z.string()),
+  prediction_cutoff: z.string(),
+  evidence_cutoff: z.string().optional(),
+  strict_audit: z.boolean().default(true),
+});
+export type HistoricalBatchEvaluationRequest = z.infer<typeof HistoricalBatchEvaluationRequestSchema>;
+
+export const HistoricalTimelineItemSchema = z.object({
+  milestone_name: z.string(),
+  prediction_cutoff: z.string(),
+  evidence_cutoff: z.string(),
+  outcome_known_at_cutoff: z.boolean(),
+  stage_at_cutoff: DevelopmentStageSchema,
+  owner_at_cutoff: z.string(),
+  predicted_action: StrategicActionSchema,
+  predicted_dps: z.number().int(),
+  confidence: z.number(),
+  known_outcomes_count: z.number().int(),
+});
+export type HistoricalTimelineItem = z.infer<typeof HistoricalTimelineItemSchema>;
+
+export const HistoricalTimelineResponseSchema = z.object({
+  asset_id: z.string(),
+  asset_name: z.string(),
+  milestones: z.array(HistoricalTimelineItemSchema),
+});
+export type HistoricalTimelineResponse = z.infer<typeof HistoricalTimelineResponseSchema>;
+

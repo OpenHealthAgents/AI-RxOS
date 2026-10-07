@@ -1,13 +1,52 @@
 from __future__ import annotations
 
 from datetime import date
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 from uuid import UUID, uuid4
 
 from app.opportunity_engine.domain.canonical_model import (
     EvidencePolarity,
     ScientificEvidenceState,
     StrategicAction,
+)
+from app.opportunity_engine.temporal.models import (
+    EvidenceTemporalMetadata,
+    TemporalDateField,
+    TemporalQueryFilter,
+)
+from app.opportunity_engine.provenance import (
+    DecisionInputRecord,
+    ModelInputRecord,
+    NormalizationRecord,
+    ProvenanceGraph,
+    ProvenanceGraphEngine,
+    ProvenanceTracebackResult,
+)
+from .scoring import (
+    DirectnessLevel,
+    EvidenceQualityAppraisal,
+    EvidenceQualityEngine,
+    LowEvidenceConversionError,
+    ModelRelevance,
+    ReplicationStatus,
+    StudyDesignType,
+)
+from .ranking import (
+    EvidenceRankingEngine,
+    EvidenceRankingRecord,
+    EvidenceRankingResult,
+    EvidenceRankingTier,
+    RankingDimensionDetail,
+)
+
+from .contradiction import (
+    ContradictionEngine,
+    ContradictionRecord,
+    ContradictionReport,
+    ContradictoryClaim,
+    DisagreementCategory,
+    DisagreementResolutionStatus,
+    SilentSelectionViolationError,
 )
 from .lineage import EvidenceLineageEngine
 from .models import (
@@ -37,12 +76,21 @@ class EvidenceService:
     temporal anti-leakage filtering, and full decision lineage trees.
     """
 
-    def __init__(self, lineage_engine: Optional[EvidenceLineageEngine] = None) -> None:
+    def __init__(
+        self,
+        lineage_engine: Optional[EvidenceLineageEngine] = None,
+        provenance_engine: Optional[ProvenanceGraphEngine] = None,
+        contradiction_engine: Optional[ContradictionEngine] = None,
+    ) -> None:
         self.lineage_engine = lineage_engine or EvidenceLineageEngine()
+        self.provenance_engine = provenance_engine or ProvenanceGraphEngine()
+        self.contradiction_engine = contradiction_engine or ContradictionEngine()
         self._sources: Dict[UUID, EvidenceSource] = {}
+        self._source_asset_map: Dict[UUID, UUID] = {}
         self._extractions: Dict[UUID, EvidenceExtraction] = {}
         self._observations: Dict[UUID, EvidenceObservation] = {}
         self._claims: Dict[UUID, EvidenceClaim] = {}
+        self._appraisals: Dict[UUID, EvidenceQualityAppraisal] = {}
         self._bootstrap_fixtures()
 
     @staticmethod
@@ -52,47 +100,61 @@ class EvidenceService:
         sample_size: Optional[int],
         prospective: ProspectiveOrRetrospective,
         risk_of_bias: RiskOfBias = RiskOfBias.LOW,
-    ) -> EvidenceQuality:
+        model: Optional[str] = None,
+        species: Optional[str] = "Human",
+        source_type: SourceType = SourceType.PUBLICATION,
+        publication_date: Optional[date] = None,
+    ) -> EvidenceQualityAppraisal:
         """
-        Calibrates evidence quality score (0-100) using modified GRADE principles.
+        Calibrates evidence quality across all 10 dimensions using EvidenceQualityEngine:
+        peer review, study design, sample size, model relevance, human evidence,
+        prospective design, replication, source quality, directness, and recency.
         """
-        score = 60.0
-        if peer_reviewed:
-            score += 15.0
-        if prospective == ProspectiveOrRetrospective.PROSPECTIVE:
-            score += 10.0
-        if sample_size and sample_size >= 100:
-            score += 10.0
-        elif sample_size and sample_size >= 30:
-            score += 5.0
-        
-        if risk_of_bias == RiskOfBias.LOW:
-            score += 5.0
-        elif risk_of_bias == RiskOfBias.HIGH:
-            score -= 20.0
-
-        score = max(10.0, min(100.0, score))
-
-        if score >= 85:
-            grade = QualityGrade.GRADE_A_HIGH
-        elif score >= 70:
-            grade = QualityGrade.GRADE_B_MODERATE
-        elif score >= 50:
-            grade = QualityGrade.GRADE_C_LOW
+        # Map study_type to StudyDesignType
+        st_lower = study_type.lower()
+        if "double_blind" in st_lower or "rct" in st_lower:
+            design = StudyDesignType.RCT_DOUBLE_BLIND if "double" in st_lower else StudyDesignType.RCT_OPEN_LABEL
+        elif "phase 1" in st_lower or "phase_1" in st_lower or "phase 2" in st_lower or "phase_2" in st_lower or "clinical" in st_lower:
+            design = StudyDesignType.PHASE_1_2_SINGLE_ARM
+        elif "retrospective" in st_lower:
+            design = StudyDesignType.RETROSPECTIVE_OBSERVATIONAL
+        elif "in_vivo" in st_lower or "xenograft" in st_lower or "pdx" in st_lower:
+            design = StudyDesignType.IN_VIVO_ANIMAL_DISEASE_MODEL
+        elif "cell_line" in st_lower or "cell line" in st_lower:
+            design = StudyDesignType.IN_VITRO_CELL_LINE
+        elif "kinase" in st_lower or "biochemical" in st_lower:
+            design = StudyDesignType.BIOCHEMICAL_KINASE_ASSAY
+        elif "computational" in st_lower:
+            design = StudyDesignType.COMPUTATIONAL_PREDICTION
         else:
-            grade = QualityGrade.GRADE_D_VERY_LOW
+            design = StudyDesignType.PROSPECTIVE_COHORT if prospective == ProspectiveOrRetrospective.PROSPECTIVE else StudyDesignType.IN_VIVO_ANIMAL_DISEASE_MODEL
 
-        return EvidenceQuality(
-            quality_score=score,
-            methodological_rigor=score,
+        # Model relevance
+        is_human = species is not None and "human" in species.lower()
+        if is_human:
+            mod_rel = ModelRelevance.DIRECT_HUMAN_CLINICAL
+        elif model and "pdx" in model.lower():
+            mod_rel = ModelRelevance.PATIENT_DERIVED_XENOGRAFT
+        elif model and "syngeneic" in model.lower():
+            mod_rel = ModelRelevance.SYNGENEIC_ANIMAL_MODEL
+        elif model and "cell" in model.lower():
+            mod_rel = ModelRelevance.IMMORTALIZED_CELL_LINE
+        else:
+            mod_rel = ModelRelevance.RECOMBINANT_CELL_FREE_ASSAY
+
+        return EvidenceQualityEngine.evaluate(
+            peer_reviewed=peer_reviewed,
+            study_design=design,
+            sample_size=sample_size,
+            model_relevance=mod_rel,
+            is_human=is_human,
+            prospective_or_retrospective=prospective,
+            replication_status=ReplicationStatus.INTERNALLY_REPLICATED if sample_size and sample_size >= 50 else ReplicationStatus.SINGLE_STUDY_UNREPLICATED,
+            source_type=source_type,
+            directness=DirectnessLevel.DIRECT if is_human else DirectnessLevel.PROXIMATE,
+            publication_date=publication_date,
+            as_of_date=date.today(),
             risk_of_bias=risk_of_bias,
-            reproducibility_flag=score >= 70,
-            quality_grade=grade,
-            scoring_breakdown={
-                "peer_reviewed_bonus": 15.0 if peer_reviewed else 0.0,
-                "prospective_bonus": 10.0 if prospective == ProspectiveOrRetrospective.PROSPECTIVE else 0.0,
-                "sample_size_factor": 10.0 if (sample_size and sample_size >= 100) else 5.0 if (sample_size and sample_size >= 30) else 0.0,
-            },
         )
 
     def register_evidence(
@@ -115,9 +177,17 @@ class EvidenceService:
         prospective_or_retrospective: ProspectiveOrRetrospective = ProspectiveOrRetrospective.NOT_APPLICABLE,
         risk_of_bias: RiskOfBias = RiskOfBias.LOW,
         confidence_score: float = 0.90,
+        observation_date: Optional[date] = None,
+        trial_date: Optional[date] = None,
+        outcome_date: Optional[date] = None,
+        regulatory_date: Optional[date] = None,
+        licensing_date: Optional[date] = None,
+        prediction_cutoff: Optional[date] = None,
+        public_availability_date: Optional[date] = None,
+        temporal_metadata: Optional[EvidenceTemporalMetadata] = None,
     ) -> EvidenceSource:
         """
-        Registers an evidence source capturing all 18 specified attributes.
+        Registers an evidence source capturing all 18 specified attributes and full temporal metadata.
         """
         temporal_scope = EvidenceTemporalScope(
             valid_from=publication_date,
@@ -127,19 +197,16 @@ class EvidenceService:
             cutoff_compliant=True,
         )
 
-        quality = self.calculate_quality(
+        appraisal = self.calculate_quality(
             peer_reviewed=peer_reviewed,
             study_type=study_type,
             sample_size=sample_size,
             prospective=prospective_or_retrospective,
             risk_of_bias=risk_of_bias,
-        )
-
-        confidence_details = EvidenceConfidence(
-            score=confidence_score,
-            confidence_level=ConfidenceLevel.HIGH if confidence_score >= 0.85 else ConfidenceLevel.MEDIUM,
-            epistemic_uncertainty=round(1.0 - confidence_score, 2),
-            aleatoric_uncertainty=0.05,
+            model=model,
+            species=species,
+            source_type=source_type,
+            publication_date=publication_date,
         )
 
         citation = EvidenceCitation(
@@ -150,6 +217,17 @@ class EvidenceService:
             nct_id=source_id if source_type == SourceType.CLINICAL_TRIAL else None,
             patent_number=source_id if source_type == SourceType.PATENT else None,
             url=url_reference,
+        )
+
+        meta = temporal_metadata or EvidenceTemporalMetadata(
+            publication_date=publication_date,
+            observation_date=observation_date or publication_date,
+            trial_date=trial_date or (publication_date if source_type == SourceType.CLINICAL_TRIAL else None),
+            outcome_date=outcome_date,
+            regulatory_date=regulatory_date or (publication_date if source_type == SourceType.REGULATORY_SOURCE else None),
+            licensing_date=licensing_date or (publication_date if source_type == SourceType.COMPANY_SOURCE else None),
+            prediction_cutoff=prediction_cutoff,
+            public_availability_date=public_availability_date or publication_date,
         )
 
         source = EvidenceSource(
@@ -169,15 +247,18 @@ class EvidenceService:
             sample_size=sample_size,
             peer_reviewed=peer_reviewed,
             prospective_or_retrospective=prospective_or_retrospective,
-            quality_score=quality.quality_score,
-            confidence=confidence_score,
+            quality_score=appraisal.overall_quality_score,
+            confidence=confidence_score if confidence_score != 0.90 else appraisal.calibrated_confidence,
             temporal_validity=temporal_scope,
-            quality=quality,
-            confidence_details=confidence_details,
+            temporal_metadata=meta,
+            quality=appraisal.quality,
+            confidence_details=appraisal.confidence,
             citation=citation,
         )
 
         self._sources[source.id] = source
+        self._source_asset_map[source.id] = asset_id
+        self._appraisals[source.id] = appraisal
         self.lineage_engine.register_source(source)
         return source
 
@@ -212,6 +293,17 @@ class EvidenceService:
         self._extractions[extraction.id] = extraction
         self.lineage_engine.add_extraction(extraction)
 
+        obs_meta = EvidenceTemporalMetadata(
+            publication_date=source.temporal_metadata.publication_date if source.temporal_metadata else source.publication_date,
+            observation_date=observation_date,
+            trial_date=source.temporal_metadata.trial_date if source.temporal_metadata else None,
+            outcome_date=source.temporal_metadata.outcome_date if source.temporal_metadata else None,
+            regulatory_date=source.temporal_metadata.regulatory_date if source.temporal_metadata else None,
+            licensing_date=source.temporal_metadata.licensing_date if source.temporal_metadata else None,
+            prediction_cutoff=source.temporal_metadata.prediction_cutoff if source.temporal_metadata else None,
+            public_availability_date=source.temporal_metadata.public_availability_date if source.temporal_metadata else source.publication_date,
+        )
+
         observation = EvidenceObservation(
             extraction_id=extraction.id,
             source_id=source.id,
@@ -228,6 +320,7 @@ class EvidenceService:
             confidence=confidence,
             polarity=polarity,
             observation_state=observation_state,
+            temporal_metadata=obs_meta,
         )
         self._observations[observation.id] = observation
         self.lineage_engine.add_observation(observation)
@@ -253,13 +346,18 @@ class EvidenceService:
         for obs in asset_obs:
             obs_by_source.setdefault(obs.source_id, []).append(obs)
 
-        for src_id, observations in obs_by_source.items():
-            source = self._sources.get(src_id)
-            if not source:
-                continue
-            if cutoff_date and source.publication_date > cutoff_date:
+        for src_id, source in self._sources.items():
+            if self._source_asset_map.get(src_id) != asset_id:
                 continue
 
+            # Anti-leakage visibility filtering
+            if cutoff_date is not None:
+                if source.temporal_metadata and not source.temporal_metadata.is_visible_at(cutoff_date):
+                    continue
+                elif not source.temporal_metadata and source.publication_date > cutoff_date:
+                    continue
+
+            observations = obs_by_source.get(src_id, [])
             extractions = [
                 self._extractions[obs.extraction_id]
                 for obs in observations
@@ -287,7 +385,17 @@ class EvidenceService:
                 quality_score=source.quality_score,
                 confidence=source.confidence,
                 temporal_validity=source.temporal_validity,
-                quality=source.quality or self.calculate_quality(True, source.study_type, source.sample_size, source.prospective_or_retrospective),
+                temporal_metadata=source.temporal_metadata,
+                quality=source.quality or self.calculate_quality(
+                    peer_reviewed=source.peer_reviewed,
+                    study_type=source.study_type,
+                    sample_size=source.sample_size,
+                    prospective=source.prospective_or_retrospective,
+                    model=source.model,
+                    species=source.species,
+                    source_type=source.source_type,
+                    publication_date=source.publication_date,
+                ).quality,
                 confidence_details=source.confidence_details or EvidenceConfidence(score=source.confidence),
                 citation=source.citation or EvidenceCitation(source_id=source.id, formatted_citation=source.title, short_citation=source.title),
                 extractions=extractions,
@@ -332,6 +440,9 @@ class EvidenceService:
             peer_reviewed=True,
             prospective_or_retrospective=ProspectiveOrRetrospective.PROSPECTIVE,
             confidence_score=0.96,
+            observation_date=date(2024, 5, 8),
+            public_availability_date=date(2024, 5, 8),
+            prediction_cutoff=date(2024, 5, 15),
         )
 
         obs_selectivity = self.add_extraction_and_observation(
@@ -379,6 +490,11 @@ class EvidenceService:
             peer_reviewed=True,
             prospective_or_retrospective=ProspectiveOrRetrospective.PROSPECTIVE,
             confidence_score=0.94,
+            trial_date=date(2021, 5, 15),
+            outcome_date=date(2023, 10, 15),
+            observation_date=date(2023, 10, 15),
+            public_availability_date=date(2023, 10, 15),
+            prediction_cutoff=date(2023, 11, 1),
         )
 
         obs_safety_ti = self.add_extraction_and_observation(
@@ -412,6 +528,10 @@ class EvidenceService:
             sample_size=40,
             peer_reviewed=True,
             confidence_score=0.88,
+            trial_date=date(2022, 11, 1),
+            observation_date=date(2023, 4, 18),
+            public_availability_date=date(2023, 4, 18),
+            prediction_cutoff=date(2023, 4, 20),
         )
 
         obs_cns = self.add_extraction_and_observation(
@@ -441,6 +561,8 @@ class EvidenceService:
             study_type="patent_grant",
             peer_reviewed=False,
             confidence_score=0.99,
+            public_availability_date=date(2022, 9, 27),
+            prediction_cutoff=date(2022, 10, 1),
         )
 
         # 5. Regulatory Source (FDA Breakthrough Therapy Designation)
@@ -457,6 +579,30 @@ class EvidenceService:
             study_type="regulatory_designation",
             peer_reviewed=False,
             confidence_score=0.98,
+            regulatory_date=date(2023, 7, 24),
+            outcome_date=date(2023, 7, 24),
+            public_availability_date=date(2023, 7, 24),
+            prediction_cutoff=date(2023, 7, 25),
+        )
+
+        # 6. Licensing Source (Global Commercialization & Option Agreement)
+        self.register_evidence(
+            asset_id=zong_asset_id,
+            source_type=SourceType.COMPANY_SOURCE,
+            source_id="DEAL-2022-ZONG-01",
+            title="Strategic Co-Development and Commercial Licensing Option for Selective HER2 Programs",
+            authors=["Boehringer Ingelheim Corporate Business Development"],
+            organization="Boehringer Ingelheim & Global Commercial Partners",
+            publication_date=date(2022, 12, 1),
+            retrieval_date=date(2022, 12, 5),
+            url_reference="https://www.boehringer-ingelheim.com/press-release/partnering-licensing-her2",
+            study_type="commercial_licensing_agreement",
+            peer_reviewed=False,
+            confidence_score=0.97,
+            licensing_date=date(2022, 12, 1),
+            outcome_date=date(2022, 12, 1),
+            public_availability_date=date(2022, 12, 1),
+            prediction_cutoff=date(2022, 12, 5),
         )
 
         # Complete Lineage Chain for Zongertinib:
@@ -514,3 +660,415 @@ class EvidenceService:
             action=StrategicAction.PURSUE,
             model_output_ids=[model_out.id],
         )
+
+        # ==============================================================================
+        # IMMUTABLE PROVENANCE DAG (7 Mandatory Stages)
+        # 1. Source -> 2. Extraction -> 3. Normalization -> 4. Feature Derivation ->
+        # 5. Model Input -> 6. Model Output -> 7. Decision Input
+        # ==============================================================================
+        # Stage 1: Sources
+        self.provenance_engine.record_source(pub_src, zong_asset_id)
+        self.provenance_engine.record_source(trial_src, zong_asset_id)
+        self.provenance_engine.record_source(conf_src, zong_asset_id)
+
+        # Stage 2: Extractions
+        ext_selectivity = self._extractions[obs_selectivity.extraction_id]
+        ext_potency = self._extractions[obs_potency.extraction_id]
+        ext_safety = self._extractions[obs_safety_ti.extraction_id]
+        ext_cns = self._extractions[obs_cns.extraction_id]
+
+        self.provenance_engine.record_extraction(ext_selectivity, pub_src, zong_asset_id)
+        self.provenance_engine.record_extraction(ext_potency, pub_src, zong_asset_id)
+        self.provenance_engine.record_extraction(ext_safety, trial_src, zong_asset_id)
+        self.provenance_engine.record_extraction(ext_cns, conf_src, zong_asset_id)
+
+        # Stage 3: Normalizations
+        norm_selectivity = NormalizationRecord(
+            extraction_id=ext_selectivity.id,
+            asset_id=zong_asset_id,
+            raw_value=">59-fold selectivity margin",
+            normalized_value=59.1,
+            normalized_unit="fold_ratio",
+            parameter_name="mutant_vs_wt_selectivity_ratio",
+            transformation_rule="regex_ratio_extraction_to_fold",
+        )
+        self.provenance_engine.record_normalization(norm_selectivity, ext_selectivity.id, obs_selectivity)
+
+        norm_potency = NormalizationRecord(
+            extraction_id=ext_potency.id,
+            asset_id=zong_asset_id,
+            raw_value="Mean biochemical IC50 2.1 nM",
+            normalized_value=2.1,
+            normalized_unit="nM",
+            parameter_name="biochemical_ic50_nm",
+            transformation_rule="concentration_nm_standardization",
+        )
+        self.provenance_engine.record_normalization(norm_potency, ext_potency.id, obs_potency)
+
+        norm_safety = NormalizationRecord(
+            extraction_id=ext_safety.id,
+            asset_id=zong_asset_id,
+            raw_value="Grade 3+ diarrhea in 3.9%",
+            normalized_value=3.9,
+            normalized_unit="%",
+            parameter_name="grade_3_plus_diarrhea_rate_pct",
+            transformation_rule="adverse_event_rate_pct",
+        )
+        self.provenance_engine.record_normalization(norm_safety, ext_safety.id, obs_safety_ti)
+
+        norm_cns = NormalizationRecord(
+            extraction_id=ext_cns.id,
+            asset_id=zong_asset_id,
+            raw_value="brain-to-plasma ratio 0.42",
+            normalized_value=0.42,
+            normalized_unit="ratio",
+            parameter_name="brain_to_plasma_ratio",
+            transformation_rule="pk_partition_ratio",
+        )
+        self.provenance_engine.record_normalization(norm_cns, ext_cns.id, obs_cns)
+
+        # Stage 4: Feature Derivations
+        self.provenance_engine.record_feature_derivation(feat_selectivity, [norm_selectivity.id])
+        self.provenance_engine.record_feature_derivation(feat_potency, [norm_potency.id])
+        self.provenance_engine.record_feature_derivation(feat_safety_ti, [norm_safety.id])
+        self.provenance_engine.record_feature_derivation(feat_cns, [norm_cns.id])
+
+        # Stage 5: Model Input
+        model_input = ModelInputRecord(
+            model_name="CalibratedMultiAttributeEngine",
+            model_version="v0.1",
+            asset_id=zong_asset_id,
+            feature_ids=[
+                feat_selectivity.id,
+                feat_potency.id,
+                feat_safety_ti.id,
+                feat_cns.id,
+            ],
+            feature_vector={
+                "target_selectivity": feat_selectivity.computed_value,
+                "potency": feat_potency.computed_value,
+                "safety_ti": feat_safety_ti.computed_value,
+                "cns_penetration": feat_cns.computed_value,
+            },
+        )
+        self.provenance_engine.record_model_input(model_input)
+
+        # Stage 6: Model Output
+        self.provenance_engine.record_model_output(model_out, model_input.id)
+
+        # Stage 7: Decision Input (Final Recommendation)
+        decision_input = DecisionInputRecord(
+            recommendation_id=rec_id,
+            asset_id=zong_asset_id,
+            action=StrategicAction.PURSUE,
+            model_output_ids=[model_out.id],
+            model_scores={"development_potential_score": model_out.output_value},
+            decision_policy_version="v1.0",
+            thresholds_applied={"pursue_min_dps": 65.0},
+        )
+        self.provenance_engine.record_decision_input(decision_input)
+
+        # Stage 8: Explicit Contradictory Evidence Registration
+        # Source 6: Real-World Clinical Intracranial Cohort (Lancet Oncol 2024 / NCT04886804-CNS)
+        cns_realworld_src = self.register_evidence(
+            asset_id=zong_asset_id,
+            source_type=SourceType.CLINICAL_TRIAL,
+            source_id="NCT04886804-CNS-EXP",
+            title="Real-World Intracranial Objective Response Rate of Zongertinib in Heavily Pretreated Brain Metastases Post-T-DXd",
+            authors=["Lancet Oncology Clinical Investigators"],
+            organization="Lancet Oncology Collaborators",
+            publication_date=date(2024, 6, 2),
+            retrieval_date=date(2024, 6, 10),
+            url_reference="https://doi.org/10.1016/S1470-2045(24)00241-1",
+            study_type="phase_1_2_single_arm",
+            phase="Phase 1b",
+            species="Human",
+            model="HER2+ NSCLC / Active untreated CNS metastases",
+            sample_size=12,
+            peer_reviewed=True,
+            prospective_or_retrospective=ProspectiveOrRetrospective.PROSPECTIVE,
+            confidence_score=0.84,
+            trial_date=date(2023, 8, 1),
+            outcome_date=date(2024, 6, 2),
+            observation_date=date(2024, 6, 2),
+            public_availability_date=date(2024, 6, 2),
+            prediction_cutoff=date(2024, 6, 10),
+        )
+
+        # Source 7: High-Dose Phase 1b Dose Escalation Cohort (240mg BID Safety Signal)
+        high_dose_safety_src = self.register_evidence(
+            asset_id=zong_asset_id,
+            source_type=SourceType.CLINICAL_TRIAL,
+            source_id="NCT04886804-DOSE-240",
+            title="Dose-Dependent Safety and Wild-Type Sparing Characterization of Zongertinib at 240mg BID",
+            authors=["American Society of Clinical Oncology (ASCO) Investigators"],
+            organization="ASCO Annual Meeting 2024",
+            publication_date=date(2024, 6, 15),
+            retrieval_date=date(2024, 6, 20),
+            url_reference="https://ascopubs.org/doi/10.1200/JCO.2024.42.16_suppl.3012",
+            study_type="phase_1_2_single_arm",
+            phase="Phase 1b",
+            species="Human",
+            model="Advanced Solid Tumors (240mg BID Cohort)",
+            sample_size=62,
+            peer_reviewed=True,
+            prospective_or_retrospective=ProspectiveOrRetrospective.PROSPECTIVE,
+            confidence_score=0.91,
+            trial_date=date(2023, 6, 1),
+            outcome_date=date(2024, 6, 15),
+            observation_date=date(2024, 6, 15),
+            public_availability_date=date(2024, 6, 15),
+            prediction_cutoff=date(2024, 6, 20),
+        )
+
+        # Contradiction Pair 1: CNS Penetration & Intracranial Regression Discrepancy
+        cns_claim_a = ContradictoryClaim(
+            claim_text="Mean unbound brain-to-plasma ratio of zongertinib was 0.42, with 95% intracranial regression in murine orthotopic xenografts.",
+            polarity=EvidencePolarity.SUPPORTING,
+            source=conf_src,
+            date=date(2023, 4, 18),
+            study_design=StudyDesignType.IN_VIVO_ANIMAL_DISEASE_MODEL,
+            quality=EvidenceQuality(quality_score=74.0, methodological_rigor=76.0, risk_of_bias=RiskOfBias.LOW),
+            confidence=EvidenceConfidence(score=0.88, confidence_level=ConfidenceLevel.HIGH),
+            numeric_measurement="Kp,uu = 0.42",
+            observed_endpoint="Intracranial Regression",
+            sample_size=40,
+        )
+        cns_claim_b = ContradictoryClaim(
+            claim_text="Intracranial objective response rate was 33% (4/12) in patients with active untreated brain metastases post-T-DXd.",
+            polarity=EvidencePolarity.CONTRADICTORY,
+            source=cns_realworld_src,
+            date=date(2024, 6, 2),
+            study_design=StudyDesignType.PHASE_1_2_SINGLE_ARM,
+            quality=EvidenceQuality(quality_score=86.0, methodological_rigor=88.0, risk_of_bias=RiskOfBias.LOW),
+            confidence=EvidenceConfidence(score=0.84, confidence_level=ConfidenceLevel.HIGH),
+            numeric_measurement="iORR = 33%",
+            observed_endpoint="Intracranial Objective Response Rate",
+            sample_size=12,
+        )
+        self.contradiction_engine.build_contradiction_pair(
+            asset_id=zong_asset_id,
+            topic="Intracranial CNS Penetration & Clinical Response",
+            parameter_name="intracranial_response_rate",
+            category=DisagreementCategory.CNS_PENETRATION_DISCREPANCY,
+            claim_a=cns_claim_a,
+            claim_b=cns_claim_b,
+            status=DisagreementResolutionStatus.PARTIALLY_EXPLAINED,
+            possible_explanation=(
+                "Design and cohort disparity: Murine orthotopic xenografts in treatment-naive mice demonstrated high "
+                "Kp,uu (0.42) and 95% intracranial regression, whereas human Phase 1b clinical data in heavily pretreated "
+                "patients post-T-DXd showed 33% iORR. Active P-gp efflux at the intact human blood-tumor barrier and prior "
+                "radiotherapy vascular scarring likely account for the clinical attenuation."
+            ),
+            resolution_recommendation="Track dedicated Beamion LUNG-1 Phase 2 brain metastasis cohort expansion with prospective RANO-BM criteria.",
+        )
+
+        # Contradiction Pair 2: WT-EGFR Sparing vs Clinical Diarrhea Rate
+        safety_claim_a = ContradictoryClaim(
+            claim_text="Sub-nanomolar selectivity window (>59-fold vs WT EGFR) predicts minimal EGFR-mediated wild-type toxicity.",
+            polarity=EvidencePolarity.SUPPORTING,
+            source=pub_src,
+            date=date(2024, 5, 8),
+            study_design=StudyDesignType.BIOCHEMICAL_KINASE_ASSAY,
+            quality=EvidenceQuality(quality_score=85.0, methodological_rigor=88.0, risk_of_bias=RiskOfBias.LOW),
+            confidence=EvidenceConfidence(score=0.95, confidence_level=ConfidenceLevel.HIGH),
+            numeric_measurement=">59x selectivity",
+            observed_endpoint="WT EGFR Sparing Ratio",
+            sample_size=120,
+        )
+        safety_claim_b = ContradictoryClaim(
+            claim_text="At 240mg BID dosing, Grade 3 diarrhea occurred in 6.5% of patients (overall diarrhea 48%), signaling partial WT-EGFR engagement in human intestinal mucosa.",
+            polarity=EvidencePolarity.CONTRADICTORY,
+            source=high_dose_safety_src,
+            date=date(2024, 6, 15),
+            study_design=StudyDesignType.PHASE_1_2_SINGLE_ARM,
+            quality=EvidenceQuality(quality_score=89.0, methodological_rigor=90.0, risk_of_bias=RiskOfBias.LOW),
+            confidence=EvidenceConfidence(score=0.91, confidence_level=ConfidenceLevel.HIGH),
+            numeric_measurement="Grade 3 Diarrhea = 6.5%",
+            observed_endpoint="Treatment-Related Adverse Events",
+            sample_size=62,
+        )
+        self.contradiction_engine.build_contradiction_pair(
+            asset_id=zong_asset_id,
+            topic="Wild-Type EGFR Sparing Margin vs Clinical Diarrhea",
+            parameter_name="grade_3_diarrhea_rate",
+            category=DisagreementCategory.SAFETY_TOXICITY_CONFLICT,
+            claim_a=safety_claim_a,
+            claim_b=safety_claim_b,
+            status=DisagreementResolutionStatus.PARTIALLY_EXPLAINED,
+            possible_explanation=(
+                "Assay conditions vs clinical exposure: High selectivity in cell-free biochemical kinase panels does not "
+                "fully protect against off-target gastrointestinal toxicity when high clinical doses (240mg BID) produce "
+                "peak Cmax levels sufficient to partially inhibit mucosal EGFR."
+            ),
+            resolution_recommendation="Establish 120mg BID as maximum recommended Phase 2 dose (RP2D) with proactive prophylactic antidiarrheal guidance.",
+        )
+
+    def get_asset_contradictions(self, asset_id: UUID) -> List[ContradictionRecord]:
+        """Returns all registered contradictory evidence pairs for an asset."""
+        return self.contradiction_engine.get_contradictions_for_asset(asset_id)
+
+    def get_asset_contradiction_report(self, asset_id: UUID, asset_name: str = "Asset") -> ContradictionReport:
+        """Generates comprehensive contradiction summary report with epistemic disclaimers."""
+        return self.contradiction_engine.generate_contradiction_report(asset_id, asset_name)
+
+    def register_contradiction(self, record: ContradictionRecord) -> ContradictionRecord:
+        """Registers a verified contradiction record."""
+        return self.contradiction_engine.register_contradiction(record)
+
+    def trace_recommendation_provenance(self, recommendation_id: UUID) -> ProvenanceTracebackResult:
+        """Traces a final recommendation back through all 7 stages to root sources."""
+        return self.provenance_engine.trace_recommendation_back_to_sources(recommendation_id)
+
+    def get_provenance_graph(self, recommendation_id: UUID) -> ProvenanceGraph:
+        """Retrieves complete immutable provenance DAG with Merkle hash."""
+        return self.provenance_engine.get_provenance_graph(recommendation_id)
+
+    def get_source_appraisal(self, source_id: UUID) -> Optional[EvidenceQualityAppraisal]:
+        """Retrieves the full 10-dimension quality appraisal for a source."""
+        return self._appraisals.get(source_id)
+
+    def evaluate_evidence(
+        self,
+        peer_reviewed: bool,
+        study_design: StudyDesignType,
+        sample_size: Optional[int],
+        model_relevance: ModelRelevance,
+        is_human: bool,
+        prospective_or_retrospective: ProspectiveOrRetrospective,
+        replication_status: ReplicationStatus,
+        source_type: SourceType,
+        directness: DirectnessLevel = DirectnessLevel.DIRECT,
+        publication_date: Optional[date] = None,
+        as_of_date: Optional[date] = None,
+        risk_of_bias: RiskOfBias = RiskOfBias.LOW,
+    ) -> EvidenceQualityAppraisal:
+        """Evaluates arbitrary evidence configuration across all 10 dimensions."""
+        return EvidenceQualityEngine.evaluate(
+            peer_reviewed=peer_reviewed,
+            study_design=study_design,
+            sample_size=sample_size,
+            model_relevance=model_relevance,
+            is_human=is_human,
+            prospective_or_retrospective=prospective_or_retrospective,
+            replication_status=replication_status,
+            source_type=source_type,
+            directness=directness,
+            publication_date=publication_date,
+            as_of_date=as_of_date or date.today(),
+            risk_of_bias=risk_of_bias,
+        )
+
+    def query_evidence_by_time(
+        self,
+        asset_id: Optional[UUID] = None,
+        filter: Optional[TemporalQueryFilter] = None,
+        as_of_date: Optional[date] = None,
+        start_date: Optional[date] = None,
+        end_date: Optional[date] = None,
+        date_field: Union[TemporalDateField, str] = TemporalDateField.ANY_DATE,
+        prediction_cutoff: Optional[date] = None,
+    ) -> List[Evidence]:
+        """
+        Queries all evidence across temporal coordinates.
+        Supports:
+        - as_of_date (strict anti-leakage visibility filtering)
+        - start_date / end_date ranges
+        - date_field (publication_date, observation_date, trial_date, outcome_date, regulatory_date, licensing_date, prediction_cutoff, public_availability_date, any_date)
+        - prediction cutoff filtering
+        All evidence is queryable by time.
+        """
+        if filter is None:
+            if isinstance(date_field, str):
+                date_field = TemporalDateField(date_field)
+            filter = TemporalQueryFilter(
+                as_of_date=as_of_date,
+                start_date=start_date,
+                end_date=end_date,
+                date_field=date_field,
+                prediction_cutoff=prediction_cutoff,
+            )
+
+        if asset_id:
+            all_evidence = self.get_asset_evidence(asset_id, cutoff_date=filter.as_of_date)
+        else:
+            all_asset_ids = {obs.asset_id for obs in self._observations.values()}
+            all_evidence = []
+            for a_id in all_asset_ids:
+                all_evidence.extend(self.get_asset_evidence(a_id, cutoff_date=filter.as_of_date))
+
+        matching_evidence = []
+        for ev in all_evidence:
+            if ev.temporal_metadata and filter.matches(ev.temporal_metadata):
+                matching_evidence.append(ev)
+
+        return matching_evidence
+
+    def rank_evidence(
+        self,
+        evidence_items: List[Dict[str, Any]],
+        as_of_date: Optional[date] = None,
+        prediction_cutoff: Optional[date] = None,
+        query_context: Optional[str] = None,
+    ) -> EvidenceRankingResult:
+        """
+        Ranks arbitrary evidence items using the 9 canonical dimensions:
+        source quality, directness, recency, human relevance, study design,
+        sample size, peer review, confidence, temporal validity.
+        Returns ranked evidence with detailed ranking rationale.
+        """
+        return EvidenceRankingEngine.rank_evidence_list(
+            evidence_items=evidence_items,
+            as_of_date=as_of_date,
+            prediction_cutoff=prediction_cutoff,
+            query_context=query_context,
+        )
+
+    def rank_asset_evidence(
+        self,
+        asset_id: UUID,
+        as_of_date: Optional[date] = None,
+        prediction_cutoff: Optional[date] = None,
+    ) -> EvidenceRankingResult:
+        """
+        Ranks all registered evidence for an asset across all 9 dimensions,
+        returning evidence in descending rank order with transparent rationale.
+        """
+        evidence_list = self.get_asset_evidence(asset_id, cutoff_date=as_of_date)
+        items = []
+        for ev in evidence_list:
+            # Map study design type
+            s_design = StudyDesignType.PHASE_1_2_SINGLE_ARM
+            if ev.study_type in [s.value for s in StudyDesignType]:
+                s_design = StudyDesignType(ev.study_type)
+            elif "rct" in ev.study_type.lower():
+                s_design = StudyDesignType.RCT_DOUBLE_BLIND
+
+            # Map directness
+            directness = DirectnessLevel.DIRECT
+            if ev.species and "mouse" in ev.species.lower():
+                directness = DirectnessLevel.PROXIMATE
+
+            items.append({
+                "id": str(ev.id),
+                "title": ev.title,
+                "citation": ev.citation.formatted_citation if ev.citation else ev.title,
+                "source_type": ev.source_type,
+                "directness": directness,
+                "is_human": ev.species == "Human" or (ev.model and "human" in ev.model.lower()),
+                "model_relevance": ModelRelevance.DIRECT_HUMAN_CLINICAL if ev.species == "Human" else ModelRelevance.PATIENT_DERIVED_XENOGRAFT,
+                "study_design": s_design,
+                "sample_size": ev.sample_size,
+                "peer_reviewed": ev.peer_reviewed,
+                "confidence": ev.confidence,
+                "publication_date": ev.publication_date,
+                "valid_to_date": ev.temporal_validity.valid_to if ev.temporal_validity else None,
+            })
+
+        return self.rank_evidence(
+            evidence_items=items,
+            as_of_date=as_of_date,
+            prediction_cutoff=prediction_cutoff,
+            query_context=f"Asset {asset_id} evidence ranking",
+        )
+

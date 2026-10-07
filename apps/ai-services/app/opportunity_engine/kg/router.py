@@ -7,9 +7,19 @@ from fastapi import APIRouter, HTTPException, Query, status
 
 from .engine import OncologyKnowledgeGraphEngine
 from .models import (
+    CANONICAL_ONCOLOGY_RELATIONSHIPS,
+    AssetOpportunityGraph,
+    CreateEdgeRequest,
+    EdgeEvidenceProvenance,
+    KGEdge,
     KGNode,
+    KGRelationshipType,
+    MissingEvidenceProvenanceError,
     OncologyGraphQueryResult,
+    RelationshipProvenanceDetail,
 )
+
+
 
 router = APIRouter(prefix="/api/v1/kg", tags=["Oncology Knowledge Graph"])
 
@@ -77,3 +87,96 @@ def get_graph_node(node_id: UUID) -> KGNode:
             detail=f"Node '{node_id}' not found.",
         )
     return node
+
+
+# ==============================================================================
+# Oncology Opportunity Graph & Provenance Verification Endpoints
+# ==============================================================================
+
+@router.get("/assets/{asset_id}/opportunity-graph", response_model=AssetOpportunityGraph)
+def get_asset_opportunity_graph(asset_id: UUID) -> AssetOpportunityGraph:
+    """
+    Returns the comprehensive Oncology Opportunity Graph for an asset across
+    all 15 canonical biomedical and commercial relationships with full evidence provenance.
+    """
+    engine = get_kg_engine()
+    try:
+        return engine.get_asset_opportunity_graph(asset_id)
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        )
+
+
+@router.get(
+    "/assets/{asset_id}/relationships/{category}",
+    response_model=List[RelationshipProvenanceDetail],
+)
+def get_asset_relationships_by_category(
+    asset_id: UUID,
+    category: str,
+) -> List[RelationshipProvenanceDetail]:
+    """
+    Returns the relationship provenance details for a specific canonical relationship category.
+    Examples: 'target', 'gene', 'mutation', 'disease', 'biomarker', 'patient_population',
+    'trial', 'publication', 'company', 'competitor', 'resistance', 'combination',
+    'patent', 'license', 'regulatory_event'.
+    """
+    engine = get_kg_engine()
+    try:
+        return engine.get_asset_relationships_by_category(asset_id, category)
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        )
+
+
+@router.get("/provenance/audit", response_model=Dict[str, Any])
+def audit_graph_provenance() -> Dict[str, Any]:
+    """
+    Audits evidence provenance across the entire oncology knowledge graph,
+    confirming that 100% of relationships retain source citations and lineage.
+    """
+    engine = get_kg_engine()
+    return engine.get_provenance_audit_summary()
+
+
+@router.get("/relationships/canonical", response_model=List[str])
+def list_canonical_relationships() -> List[str]:
+    """Returns the 15 canonical oncology opportunity graph relationships."""
+    return CANONICAL_ONCOLOGY_RELATIONSHIPS
+
+
+@router.post("/edges", response_model=KGEdge, status_code=status.HTTP_201_CREATED)
+def create_graph_edge(
+    payload: CreateEdgeRequest,
+) -> KGEdge:
+    """
+    Creates a new directed edge in the knowledge graph.
+    Enforces that evidence lineage cannot be empty.
+    """
+    engine = get_kg_engine()
+    try:
+        return engine.add_edge(
+            source_node_id=payload.source_node_id,
+            relationship_type=payload.relationship_type,
+            target_node_id=payload.target_node_id,
+            confidence=payload.confidence,
+            properties=payload.properties,
+            evidence=payload.evidence_lineage,
+            strict_provenance=True,
+        )
+    except MissingEvidenceProvenanceError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Provenence validation failed: {str(exc)}",
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        )
+
+

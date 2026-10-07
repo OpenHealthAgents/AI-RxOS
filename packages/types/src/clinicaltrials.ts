@@ -93,6 +93,8 @@ export const ClinicalTrialRecordSchema = z.object({
   results: z.record(z.string(), z.unknown()).nullable().optional(),
   adverse_events: z.array(AdverseEventItemSchema).default([]),
   termination_reason: z.string().nullable().optional(),
+  termination: z.string().nullable().optional(),
+  why_stopped: z.string().nullable().optional(),
   withdrawal_reason: z.string().nullable().optional(),
   publication_links: z.array(z.string()).default([]),
   start_date: z.string().nullable().optional(),

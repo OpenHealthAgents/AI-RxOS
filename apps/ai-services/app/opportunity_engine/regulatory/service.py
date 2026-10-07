@@ -64,6 +64,29 @@ class RegulatoryIntelligenceService:
         self._events_by_asset.setdefault(verified_event.asset.asset_id, []).append(verified_event)
         return verified_event
 
+    def batch_record_events(
+        self,
+        events: List[RegulatoryEventRecord],
+        strict: bool = False,
+    ) -> List[RegulatoryEventRecord]:
+        """Batch records and validates multiple regulatory events."""
+        return [self.record_event(e, strict=strict) for e in events]
+
+    def get_event(self, event_id: UUID) -> Optional[RegulatoryEventRecord]:
+        """Retrieves a single regulatory event by UUID."""
+        return self._events_by_id.get(event_id)
+
+    def get_events_by_type(
+        self,
+        event_type: RegulatoryEventType,
+        cutoff_date: Optional[date] = None,
+    ) -> List[RegulatoryEventRecord]:
+        """Retrieves all events matching a given RegulatoryEventType, optionally capped at cutoff_date."""
+        matches = [e for e in self._events_by_id.values() if e.event.event_type == event_type]
+        if cutoff_date:
+            matches = [e for e in matches if e.event_date <= cutoff_date]
+        return sorted(matches, key=lambda e: e.event_date)
+
     def get_asset_timeline(
         self,
         asset_id: UUID,

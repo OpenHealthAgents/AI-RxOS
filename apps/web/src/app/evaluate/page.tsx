@@ -17,12 +17,26 @@ function EvaluateContent() {
   } = useWorkspace();
 
   const sectionParam = searchParams.get("section");
+  const assetParam = searchParams.get("asset");
 
   useEffect(() => {
     if (sectionParam) {
       setActiveSection(sectionParam);
     }
   }, [sectionParam, setActiveSection]);
+
+  useEffect(() => {
+    if (assetParam) {
+      const found = allAssets.find(
+        (a) =>
+          a.id.toLowerCase() === assetParam.toLowerCase() ||
+          a.name.toLowerCase() === assetParam.toLowerCase()
+      );
+      if (found) {
+        setAsset1(found);
+      }
+    }
+  }, [assetParam, allAssets, setAsset1]);
 
   return (
     <EvaluateView

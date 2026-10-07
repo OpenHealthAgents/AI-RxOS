@@ -270,70 +270,155 @@ export function PriorityIndicator({ priority, label, className }: PriorityIndica
 }
 
 // ==========================================
-// 5. EvidenceBadge
+// 5. Visual States & EvidenceBadge
 // ==========================================
+export type VisualState =
+  | "VERIFIED"
+  | "INFERRED"
+  | "PREDICTED"
+  | "HYPOTHESIS"
+  | "UNKNOWN"
+  | "CONFLICTING"
+  | "INSUFFICIENT_EVIDENCE";
+
+export type ScientificEvidenceOrVisualState =
+  | VisualState
+  | ScientificEvidenceState
+  | "verified_fact"
+  | "ai_inference"
+  | "ml_prediction"
+  | "hypothesis"
+  | "unknown"
+  | "conflicting_evidence"
+  | "insufficient_evidence"
+  | "positive"
+  | "negative"
+  | "neutral"
+  | string;
+
+export interface VisualStateConfig {
+  icon: string;
+  label: string;
+  classes: string;
+}
+
+export function getVisualStateConfig(state: ScientificEvidenceOrVisualState): VisualStateConfig {
+  const normalized = String(state).trim().toUpperCase();
+
+  switch (normalized) {
+    case "VERIFIED":
+    case "VERIFIED_FACT":
+      return {
+        icon: "★",
+        label: "Verified Fact",
+        classes: "bg-emerald-50 text-emerald-800 border-emerald-300 ring-1 ring-emerald-200/50 font-bold",
+      };
+    case "INFERRED":
+    case "AI_INFERENCE":
+      return {
+        icon: "⚡",
+        label: "AI Inference",
+        classes: "bg-indigo-50 text-indigo-800 border-indigo-300 ring-1 ring-indigo-200/50",
+      };
+    case "PREDICTED":
+    case "ML_PREDICTION":
+      return {
+        icon: "🔮",
+        label: "ML Prediction",
+        classes: "bg-purple-50 text-purple-800 border-purple-300 ring-1 ring-purple-200/50 font-semibold",
+      };
+    case "HYPOTHESIS":
+      return {
+        icon: "💡",
+        label: "Hypothesis",
+        classes: "bg-sky-50 text-sky-800 border-sky-300 ring-1 ring-sky-200/50 font-semibold",
+      };
+    case "UNKNOWN":
+      return {
+        icon: "?",
+        label: "Unknown / Gap",
+        classes: "bg-slate-100 text-slate-700 border-slate-300 ring-1 ring-slate-200/50 font-medium",
+      };
+    case "CONFLICTING":
+    case "CONFLICTING_EVIDENCE":
+    case "CONTRADICTORY":
+    case "CONTRADICTING":
+      return {
+        icon: "⇄",
+        label: "Contradictory Evidence",
+        classes: "bg-rose-50 text-rose-800 border-rose-300 ring-1 ring-rose-200/50 font-bold",
+      };
+    case "INSUFFICIENT_EVIDENCE":
+      return {
+        icon: "!",
+        label: "Insufficient Evidence",
+        classes: "bg-amber-50 text-amber-800 border-amber-300 border-dashed ring-1 ring-amber-200/40 font-semibold",
+      };
+    case "SUPPORTING":
+    case "POSITIVE":
+      return {
+        icon: "✓",
+        label: "Supporting Evidence",
+        classes: "bg-emerald-50 text-emerald-800 border-emerald-300 ring-1 ring-emerald-200/50 font-semibold",
+      };
+    case "NEGATIVE":
+      return {
+        icon: "✕",
+        label: "Negative Finding",
+        classes: "bg-rose-50 text-rose-800 border-rose-300 ring-1 ring-rose-200/50",
+      };
+    case "NEUTRAL":
+      return {
+        icon: "•",
+        label: "Neutral Observation",
+        classes: "bg-slate-100 text-slate-700 border-slate-300",
+      };
+    default:
+      return {
+        icon: "•",
+        label: String(state),
+        classes: "bg-slate-100 text-slate-700 border-slate-300",
+      };
+  }
+}
+
+export interface VisualStateBadgeProps {
+  state: VisualState;
+  customText?: string;
+  showIcon?: boolean;
+  className?: string;
+}
+
+export function VisualStateBadge({
+  state,
+  customText,
+  showIcon = true,
+  className,
+}: VisualStateBadgeProps) {
+  const config = getVisualStateConfig(state);
+
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 rounded border px-2 py-0.5 text-[10px] tracking-wide transition-colors",
+        config.classes,
+        className
+      )}
+    >
+      {showIcon && <span className="text-[10px] font-bold">{config.icon}</span>}
+      <span>{customText || config.label}</span>
+    </span>
+  );
+}
+
 export interface EvidenceBadgeProps {
-  state: ScientificEvidenceState;
+  state: ScientificEvidenceOrVisualState;
   customText?: string;
   className?: string;
 }
 
 export function EvidenceBadge({ state, customText, className }: EvidenceBadgeProps) {
-  const getBadgeConfig = () => {
-    switch (state) {
-      case "positive":
-        return {
-          icon: "✓",
-          label: "Positive Evidence",
-          classes: "bg-emerald-50 text-emerald-800 border-emerald-300 ring-1 ring-emerald-200/50",
-        };
-      case "negative":
-        return {
-          icon: "✕",
-          label: "Negative Finding",
-          classes: "bg-rose-50 text-rose-800 border-rose-300 ring-1 ring-rose-200/50",
-        };
-      case "neutral":
-        return {
-          icon: "•",
-          label: "Neutral Observation",
-          classes: "bg-slate-100 text-slate-700 border-slate-300",
-        };
-      case "unknown":
-        return {
-          icon: "?",
-          label: "Unknown / Gap",
-          classes: "bg-purple-50 text-purple-800 border-purple-300 ring-1 ring-purple-200/50",
-        };
-      case "insufficient_evidence":
-        return {
-          icon: "!",
-          label: "Insufficient Data",
-          classes: "bg-amber-50 text-amber-800 border-amber-300 border-dashed",
-        };
-      case "conflicting_evidence":
-        return {
-          icon: "⇄",
-          label: "Conflicting Signals",
-          classes: "bg-orange-50 text-orange-800 border-orange-300 ring-1 ring-orange-200/50",
-        };
-      case "ai_inference":
-        return {
-          icon: "⚡",
-          label: "AI Inference",
-          classes: "bg-indigo-50 text-indigo-800 border-indigo-300 ring-1 ring-indigo-200/50",
-        };
-      case "verified_fact":
-      default:
-        return {
-          icon: "★",
-          label: "Verified Fact",
-          classes: "bg-blue-50 text-blue-800 border-blue-300 ring-1 ring-blue-200/50 font-bold",
-        };
-    }
-  };
-
-  const config = getBadgeConfig();
+  const config = getVisualStateConfig(state);
 
   return (
     <span
@@ -350,7 +435,7 @@ export function EvidenceBadge({ state, customText, className }: EvidenceBadgePro
 }
 
 // ==========================================
-// 6. ClinicalStageIndicator
+// 6. ClinicalStage & ClinicalStageIndicator
 // ==========================================
 export interface ClinicalStageIndicatorProps {
   stage: DevelopmentStage | string;
@@ -398,6 +483,32 @@ export function ClinicalStageIndicator({ stage, className }: ClinicalStageIndica
       })}
     </div>
   );
+}
+
+export interface ClinicalStageProps {
+  stage: DevelopmentStage | string;
+  variant?: "stepper" | "badge";
+  className?: string;
+}
+
+export function ClinicalStage({
+  stage,
+  variant = "stepper",
+  className,
+}: ClinicalStageProps) {
+  if (variant === "badge") {
+    return (
+      <span
+        className={cn(
+          "inline-flex items-center rounded-md bg-blue-50 px-2 py-0.5 text-xs font-bold text-blue-700 ring-1 ring-blue-700/10",
+          className
+        )}
+      >
+        {stage}
+      </span>
+    );
+  }
+  return <ClinicalStageIndicator stage={stage} className={className} />;
 }
 
 // ==========================================

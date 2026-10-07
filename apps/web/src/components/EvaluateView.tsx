@@ -128,17 +128,17 @@ export function EvaluateView({
             Jump to Section:
           </span>
           {[
-            { id: "overview", label: "1. Overview" },
-            { id: "compare", label: "2. Compare Assets" },
-            { id: "biology", label: "3. Biology & MOA" },
-            { id: "preclinical", label: "4. Preclinical" },
-            { id: "clinical", label: "5. Clinical Dev" },
-            { id: "patient-match", label: "6. Patient Match" },
-            { id: "safety", label: "7. Safety & TI" },
-            { id: "resistance", label: "8. Resistance & Combos" },
-            { id: "landscape", label: "9. Landscape" },
-            { id: "regulatory", label: "10. Regulatory & IP" },
-            { id: "evidence", label: "11. Evidence Sources" },
+            { id: "overview", label: "1. ASSET OVERVIEW" },
+            { id: "compare", label: "2. COMPARE ASSETS" },
+            { id: "biology", label: "3. BIOLOGY & MOA" },
+            { id: "preclinical", label: "4. PRECLINICAL EVIDENCE" },
+            { id: "clinical", label: "5. CLINICAL DEVELOPMENT" },
+            { id: "patient-match", label: "6. PATIENT MATCH" },
+            { id: "safety", label: "7. SAFETY & TOXICITY" },
+            { id: "resistance", label: "8. RESISTANCE & COMBINATIONS" },
+            { id: "landscape", label: "9. COMPETITIVE LANDSCAPE" },
+            { id: "regulatory", label: "10. REGULATORY & IP" },
+            { id: "evidence", label: "11. EVIDENCE & SOURCES" },
           ].map((sec) => (
             <button
               key={sec.id}

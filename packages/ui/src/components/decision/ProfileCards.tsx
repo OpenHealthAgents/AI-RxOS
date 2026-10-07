@@ -554,3 +554,21 @@ export function CombinationCard({
     </div>
   );
 }
+
+// Canonical Aliases matching Design System requirements
+export const DevelopmentPotential = DevelopmentPotentialCard;
+export type DevelopmentPotentialProps = DevelopmentPotentialCardProps;
+
+export const BiologyProfile = BiologyProfileCard;
+export type BiologyProfileProps = BiologyProfileCardProps;
+
+export const PatientMatch = PatientMatchCard;
+export type PatientMatchProps = PatientMatchCardProps;
+
+export const SafetyProfile = SafetyProfileCard;
+export type SafetyProfileProps = SafetyProfileCardProps;
+
+export const ResistanceProfile = ResistanceCard;
+export type ResistanceProfileProps = ResistanceCardProps;
+export const ResistanceProfileCard = ResistanceCard;
+

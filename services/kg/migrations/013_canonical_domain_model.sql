@@ -215,20 +215,132 @@ CREATE TABLE IF NOT EXISTS canonical.asset_aliases (
 CREATE INDEX IF NOT EXISTS idx_asset_aliases_normalized ON canonical.asset_aliases(normalized_alias, alias_type);
 CREATE INDEX IF NOT EXISTS idx_asset_aliases_asset ON canonical.asset_aliases(asset_id);
 
--- 9. Trials, Studies, Publications
+-- 9. Trials, Studies, Trial Arms, Interventions, Populations, Endpoints, Adverse Events, Publications
 CREATE TABLE IF NOT EXISTS canonical.trials (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     nct_id TEXT NOT NULL UNIQUE,
     brief_title TEXT NOT NULL,
     official_title TEXT,
-    phase TEXT NOT NULL CHECK (phase IN ('Early Phase 1', 'Phase 1', 'Phase 1/Phase 2', 'Phase 2', 'Phase 2/Phase 3', 'Phase 3', 'Phase 4', 'Not Applicable')),
+    phase TEXT NOT NULL CHECK (phase IN (
+        'Early Phase 1', 'Phase 1', 'Phase 1/Phase 2', 'Phase 2', 'Phase 2/Phase 3',
+        'Phase 3', 'Phase 4', 'Not Applicable', 'Phase I', 'Phase Ib', 'Phase II',
+        'Phase II/III', 'Phase III', 'Phase IV'
+    )),
     overall_status TEXT NOT NULL,
+    normalized_stage TEXT DEFAULT 'Phase II' CHECK (normalized_stage IN (
+        'Preclinical', 'IND-enabling', 'Phase I', 'Phase Ib', 'Phase II', 'Phase II/III',
+        'Phase III', 'Regulatory review', 'Approved', 'Withdrawn', 'Terminated', 'Discontinued'
+    )),
     sponsor_id UUID REFERENCES canonical.sponsors(id) ON DELETE SET NULL,
     enrollment INT,
+    start_date DATE,
     primary_completion_date DATE,
+    completion_date DATE,
     results_first_posted DATE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+CREATE TABLE IF NOT EXISTS canonical.trial_arms (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    trial_id UUID REFERENCES canonical.trials(id) ON DELETE CASCADE,
+    arm_label TEXT NOT NULL,
+    arm_type TEXT NOT NULL DEFAULT 'experimental',
+    description TEXT,
+    cohort_size INT,
+    intervention_names TEXT[] NOT NULL DEFAULT '{}',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_trial_arms_trial ON canonical.trial_arms(trial_id);
+
+CREATE TABLE IF NOT EXISTS canonical.interventions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    trial_id UUID REFERENCES canonical.trials(id) ON DELETE CASCADE,
+    arm_id UUID REFERENCES canonical.trial_arms(id) ON DELETE SET NULL,
+    asset_id UUID REFERENCES canonical.assets(id) ON DELETE SET NULL,
+    name TEXT NOT NULL,
+    intervention_type TEXT NOT NULL DEFAULT 'drug',
+    description TEXT,
+    dosage_form TEXT,
+    dose_regimen TEXT,
+    is_investigational BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_interventions_trial ON canonical.interventions(trial_id);
+CREATE INDEX IF NOT EXISTS idx_interventions_asset ON canonical.interventions(asset_id);
+
+CREATE TABLE IF NOT EXISTS canonical.populations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    trial_id UUID REFERENCES canonical.trials(id) ON DELETE CASCADE,
+    asset_id UUID REFERENCES canonical.assets(id) ON DELETE SET NULL,
+    population_name TEXT NOT NULL,
+    condition TEXT,
+    disease_id UUID REFERENCES canonical.diseases(id) ON DELETE SET NULL,
+    indication_id UUID REFERENCES canonical.indications(id) ON DELETE SET NULL,
+    cancer_subtype_id UUID REFERENCES canonical.cancer_subtypes(id) ON DELETE SET NULL,
+    cancer_subtype TEXT,
+    biomarker_criteria TEXT[] NOT NULL DEFAULT '{}',
+    prior_lines TEXT,
+    line_of_therapy TEXT,
+    cns_metastases_allowed BOOLEAN,
+    cns_metastases_benefit BOOLEAN DEFAULT TRUE,
+    match_score DOUBLE PRECISION CHECK (match_score BETWEEN 0 AND 100),
+    inclusion_criteria TEXT[] NOT NULL DEFAULT '{}',
+    exclusion_criteria TEXT[] NOT NULL DEFAULT '{}',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_populations_trial ON canonical.populations(trial_id);
+CREATE INDEX IF NOT EXISTS idx_populations_asset ON canonical.populations(asset_id);
+
+CREATE TABLE IF NOT EXISTS canonical.endpoints (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    trial_id UUID REFERENCES canonical.trials(id) ON DELETE CASCADE,
+    endpoint_title TEXT NOT NULL,
+    endpoint_type TEXT NOT NULL DEFAULT 'primary',
+    metric TEXT,
+    time_frame TEXT,
+    description TEXT,
+    is_met BOOLEAN,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_endpoints_trial ON canonical.endpoints(trial_id);
+
+CREATE TABLE IF NOT EXISTS canonical.adverse_events (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    trial_id UUID REFERENCES canonical.trials(id) ON DELETE CASCADE,
+    arm_id UUID REFERENCES canonical.trial_arms(id) ON DELETE SET NULL,
+    asset_id UUID REFERENCES canonical.assets(id) ON DELETE SET NULL,
+    term TEXT NOT NULL,
+    category TEXT,
+    grade TEXT DEFAULT 'Grade 3+',
+    affected_count INT,
+    total_evaluated INT,
+    frequency_pct DOUBLE PRECISION,
+    is_serious BOOLEAN NOT NULL DEFAULT FALSE,
+    dose_limiting BOOLEAN NOT NULL DEFAULT FALSE,
+    treatment_emergent BOOLEAN NOT NULL DEFAULT TRUE,
+    source_citation TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_adverse_events_trial ON canonical.adverse_events(trial_id);
+CREATE INDEX IF NOT EXISTS idx_adverse_events_asset ON canonical.adverse_events(asset_id);
+
+CREATE TABLE IF NOT EXISTS canonical.trial_status_history (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    trial_id UUID REFERENCES canonical.trials(id) ON DELETE CASCADE,
+    nct_id TEXT NOT NULL,
+    as_of_date DATE NOT NULL,
+    overall_status TEXT NOT NULL,
+    normalized_stage TEXT NOT NULL CHECK (normalized_stage IN (
+        'Preclinical', 'IND-enabling', 'Phase I', 'Phase Ib', 'Phase II', 'Phase II/III',
+        'Phase III', 'Regulatory review', 'Approved', 'Withdrawn', 'Terminated', 'Discontinued'
+    )),
+    why_stopped TEXT,
+    enrollment INT,
+    results_posted BOOLEAN NOT NULL DEFAULT FALSE,
+    change_summary TEXT DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_canonical_trial_history ON canonical.trial_status_history(nct_id, as_of_date);
 
 CREATE TABLE IF NOT EXISTS canonical.studies (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

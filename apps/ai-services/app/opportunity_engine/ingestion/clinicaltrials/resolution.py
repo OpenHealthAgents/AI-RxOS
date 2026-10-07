@@ -48,6 +48,9 @@ class ClinicalTrialResolver:
             candidates_to_check.append(intv.name)
             if intv.description:
                 candidates_to_check.append(intv.description)
+        for arm in trial.arms:
+            candidates_to_check.append(arm.arm_label)
+            candidates_to_check.extend(arm.intervention_names)
 
         for text in candidates_to_check:
             if not text:

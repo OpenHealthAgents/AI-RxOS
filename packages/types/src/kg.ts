@@ -106,3 +106,27 @@ export const OncologyGraphQueryResultSchema = z.object({
   queried_at: z.string().datetime().optional(),
 });
 export type OncologyGraphQueryResult = z.infer<typeof OncologyGraphQueryResultSchema>;
+
+export const RelationshipProvenanceDetailSchema = z.object({
+  edge_id: z.string().uuid(),
+  relationship_type: KGRelationshipTypeSchema,
+  relationship_category: z.string(),
+  source_node: GraphNodeSummarySchema,
+  target_node: GraphNodeSummarySchema,
+  confidence: z.number().min(0).max(1).default(1.0),
+  properties: z.record(z.string(), z.unknown()).default({}),
+  evidence_lineage: z.array(EdgeEvidenceProvenanceSchema).default([]),
+});
+export type RelationshipProvenanceDetail = z.infer<typeof RelationshipProvenanceDetailSchema>;
+
+export const AssetOpportunityGraphSchema = z.object({
+  asset_id: z.string().uuid(),
+  asset_name: z.string(),
+  total_relationships: z.number().int(),
+  relationships_by_category: z.record(z.string(), z.array(RelationshipProvenanceDetailSchema)).default({}),
+  covered_categories: z.array(z.string()).default([]),
+  all_relationships_have_provenance: z.boolean().default(true),
+  generated_at: z.string().datetime().optional(),
+});
+export type AssetOpportunityGraph = z.infer<typeof AssetOpportunityGraphSchema>;
+

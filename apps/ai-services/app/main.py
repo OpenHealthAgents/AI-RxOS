@@ -19,6 +19,11 @@ from app.opportunity_engine.combination.router import router as combination_rout
 from app.opportunity_engine.safety.router import router as safety_router
 from app.opportunity_engine.competitive.router import router as competitive_router
 from app.opportunity_engine.commercial.router import router as commercial_router
+from app.opportunity_engine.ingestion.pubmed.router import router as pubmed_router
+from app.opportunity_engine.ingestion.clinicaltrials.router import router as clinicaltrials_router
+from app.opportunity_engine.ingestion.orchestrator.router import router as orchestration_router
+from app.opportunity_engine.search.router import router as search_router
+from app.ml.router import router as ml_router
 
 settings = get_settings()
 
@@ -34,6 +39,7 @@ app.include_router(regulatory_router)
 app.include_router(licensing_router)
 app.include_router(kg_router)
 app.include_router(discover_router)
+app.include_router(search_router)
 app.include_router(biology_router)
 app.include_router(cns_router)
 app.include_router(clinical_router)
@@ -43,6 +49,12 @@ app.include_router(combination_router)
 app.include_router(safety_router)
 app.include_router(competitive_router)
 app.include_router(commercial_router)
+app.include_router(pubmed_router)
+app.include_router(clinicaltrials_router)
+app.include_router(orchestration_router)
+app.include_router(ml_router)
+
+
 
 
 

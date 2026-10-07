@@ -1,67 +1,108 @@
-# AI-RxOS Repository Assessment & Architectural Baseline
+# AI-RxOS Comprehensive Repository Assessment & Architectural Baseline
 
-**Document Version:** 1.0.0  
-**Date:** 2026-10-05  
-**Scope:** Complete Codebase Architecture, Technology Stack, Component Inventory, and Technical Debt Audit  
-**Classification:** Technical Architecture Specification  
-
----
-
-## 1. Executive Summary
-
-AI-RxOS is an enterprise-grade, AI-native drug discovery operating system and decision intelligence platform. The repository is architected as a polyglot Turborepo/pnpm monorepo combining TypeScript/React frontends, high-throughput Go microservices (API gateway, authentication, and hybrid search), and Python 3.12 FastAPI domain services (canonical knowledge graph, literature ingestion, agent orchestration, molecular docking, and decision intelligence).
-
-This assessment provides an exhaustive audit of all 20 technical dimensions of the existing codebase, documents runtime entry points, maps dependencies, and inventories reusable assets prior to implementation phases.
+**Document Identifier:** `NZ-ARCH-ASSESS-2026-v2.0`  
+**Date:** 2026-10-07  
+**Scope:** Complete Codebase Inspection, Infrastructure Audit, Reusable Code Inventory, Technical Debt Assessment, and Implementation Roadmap  
+**Target File:** `/docs/architecture/repository-assessment.md`  
+**Classification:** Foundational System Architecture Specification  
 
 ---
 
-## 2. 20-Point Technical Stack & Infrastructure Audit
+## 1. Executive Summary & Audit Context
+
+AI-RxOS is an enterprise-grade, polyglot drug discovery operating system and evidence-grounded decision intelligence platform (**NeoZenome**). Built to support biopharma translational oncology, medicinal chemistry, clinical strategy, and business development teams, the platform synthesizes multi-omic assays, clinical trials, regulatory records, and patent data into deterministic development decisions (`PURSUE`, `PARTNER`, `LICENSE`, `MONITOR`, `AVOID`, `INSUFFICIENT_EVIDENCE`).
+
+This assessment provides an exhaustive audit of the entire repository across all 21 core infrastructure dimensions. It inventories all working subsystems, identifies reusable components and shared libraries, details known technical debts, and outlines an optimal implementation sequence that preserves and extends existing working infrastructure without unnecessary rewrites.
+
+---
+
+## 2. Exhaustive 21-Dimension Infrastructure Audit
+
+```mermaid
+flowchart TD
+    subgraph Client & Design Tier
+        FE[Frontend: Next.js 14 / React 18 / Tailwind]
+        DS[Design System & Reusable UI: packages/ui]
+    end
+
+    subgraph Edge & Security Tier
+        GW[API Gateway: Go chi :8080]
+        AUTH[Auth Service: Go chi / Redis / Postgres :8081]
+        TEN[Tenancy & RBAC: packages/tenancy]
+    end
+
+    subgraph Analytical & AI Core
+        AI[Opportunity Engine: Python FastAPI :8090]
+        AGENTS[Agent Orchestrator: Python LangGraph :8085]
+        KG[Knowledge Graph & Outbox: Python FastAPI :8083]
+        LIT[Literature & Connectors: Python FastAPI :8082]
+        SEARCH[Hybrid Search & RRF: Go chi :8084]
+    end
+
+    subgraph Data & Storage Tier
+        PG[(PostgreSQL 16 + pgvector :15432)]
+        N4J[(Neo4j 5.26 Graph :7687)]
+        REDIS[(Redis 7 Streams :6379)]
+        OS[(OpenSearch 2.19 :9200)]
+    end
+
+    FE --> GW
+    GW --> AUTH & SEARCH & AI & KG & LIT & AGENTS
+    AUTH --> PG & REDIS
+    SEARCH --> OS & PG
+    AI --> REDIS & PG
+    KG --> PG
+    KG -.->|Transactional Outbox| N4J
+    LIT --> PG & REDIS
+    AGENTS --> REDIS & PG
+```
 
 ### 2.1 Frontend Framework
 - **Primary Framework:** Next.js 14.2.21 (React 18.3.1, TypeScript 5.7.2).
-- **Architecture:** Next.js App Router (`apps/web/src/app`, `apps/admin/src/app`).
+- **Architecture:** Next.js App Router with React Server Components (RSC) and Client Components.
 - **Applications:**
-  1. `apps/web` (Port 3000): End-user scientific decision intelligence workspace (**NeoZenome** / AI-RxOS). Implements primary product workflows: Discover, Evaluate, Patient Match, Compare, Backtest, and Opportunities.
-  2. `apps/admin` (Port 3001): Enterprise administrative console for tenant management, role configuration, model endpoints, and audit reviews.
-  3. `apps/storybook`: Component design system documentation and isolated testing harness (Storybook 8).
-  4. Static Landing Site (`index.html`, `about.html`, `architecture.html`): Root marketing and conceptual overview.
-- **Styling & Rendering:** Tailwind CSS 3.4.17 with PostCSS and Autoprefixer. Server-Side Rendering (SSR) and Client Components with React Server Components (RSC) boundary enforcement.
+  1. `apps/web` (Port 3000): End-user scientific decision intelligence workspace (**NeoZenome**). Implements primary workflow modes: `Discover`, `Evaluate`, `Patient Match`, `Compare`, `Backtest`, and `Opportunities`.
+  2. `apps/admin` (Port 3001): Enterprise administrative console for tenant management, role configuration, model endpoint monitoring, and audit reviews.
+  3. `apps/storybook`: Design system documentation and isolated component testing harness (Storybook 8).
+  4. Static Landing Pages (`index.html`, `about.html`, `architecture.html`): High-performance conceptual overviews.
+- **Styling & Rendering:** Tailwind CSS 3.4.17 with PostCSS, Autoprefixer, `tailwind-merge`, and `class-variance-authority` (cva).
+- **Reusable Frontend Assets:** Full workflow views (`CompareView.tsx`, `DiscoverView.tsx`, `EvaluateView.tsx`, `PatientMatchView.tsx`, `BacktestView.tsx`, `OpportunitiesView.tsx`).
 
 ### 2.2 Backend Framework
-The backend follows a polyglot microservice architecture divided between Go and Python:
-- **Go Services (Go 1.23+):**
-  1. `apps/api-gateway` (Port 8080): High-performance reverse proxy using `chi/v5` router, IP-based rate limiting, JWT validation middleware, and upstream header injection (`X-User-Id`, `X-Organization-Id`, `X-User-Roles`).
-  2. `services/auth` (Port 8081): Identity and access management built with `chi/v5`, `jackc/pgx/v5` connection pool, Redis session cache, bcrypt password hashing, and TOTP MFA.
-  3. `services/search` (Port 8084): Hybrid search gateway combining OpenSearch 2.19 and Reciprocal Rank Fusion (RRF) over dense/sparse vector outputs.
+The backend employs a high-performance polyglot architecture partitioning throughput-sensitive edge operations (Go) from scientific reasoning and ML inferencing (Python):
+- **Go Services (Go 1.22/1.23+):**
+  1. `apps/api-gateway` (Port 8080): Edge reverse proxy built with `chi/v5`, IP token-bucket rate limiter (20 req/s, 40 burst), JWT middleware, and context-injected upstream headers (`X-User-Id`, `X-Organization-Id`, `X-User-Roles`).
+  2. `services/auth` (Port 8081): Identity provider built with `chi/v5`, `jackc/pgx/v5` connection pool, Redis session cache, bcrypt password hashing, and RFC 6238 TOTP MFA.
+  3. `services/search` (Port 8084): Hybrid search gateway combining OpenSearch 2.19 lexical/BM25 retrieval with semantic vector search via Reciprocal Rank Fusion (RRF).
 - **Python Services (Python 3.12 + FastAPI 0.115.6 + Pydantic v2):**
-  1. `apps/ai-services` (Port 8090): Agent facade and the **Opportunity Decision Intelligence Engine** (`app/opportunity_engine`).
-  2. `apps/knowledge-service` (Port 8091): Knowledge graph BFF exposing high-level domain query facades.
-  3. `services/kg` (Port 8083): Canonical Knowledge Graph service managing PostgreSQL source-of-truth, canonical entity resolution, observations, claims, evidence links, and Neo4j projections.
+  1. `apps/ai-services` (Port 8090): Host for the **Opportunity Decision Intelligence Engine** (`app/opportunity_engine`) mounting 14 domain routers.
+  2. `apps/knowledge-service` (Port 8091): Knowledge graph BFF exposing high-level domain query facades over Neo4j.
+  3. `services/kg` (Port 8083): Canonical Knowledge Graph managing PostgreSQL source-of-truth, canonical entity resolution, observations, claims, evidence links, and Neo4j outbox projection.
   4. `services/literature` (Port 8082): Scientific document ingestion engine for PubMed, ClinicalTrials.gov, openFDA, and Google Patents.
   5. `services/agents` (Port 8085): Agentic orchestration engine with LangGraph-style state graphs, tool registries, model registries, and conversation memory.
   6. `services/workflows` (Port 8086): Multi-step scientific workflow coordinator.
-  7. `services/reports` (Port 8087): Automated dossier and report generator.
+  7. `services/reports` (Port 8087): Automated dossier and executive report generation.
   8. `services/docking` (Port 8088): Biophysical molecular docking interface.
-  9. `services/llm-wiki` (Port 8092): Persistent wiki compilation, markdown versioning, and chunk storage.
-- **Node.js Services:**
+  9. `services/llm-wiki` (Port 8092): Persistent markdown wiki compiler, semantic chunking, and vector embedding store.
+- **Node.js / TypeScript Services:**
   1. `services/auth-adapter` (Port 8089): BetterAuth adapter scaffold with Organization, Admin, and API Key plugins.
 
 ### 2.3 Database Systems
-The platform uses a polyglot persistence architecture with strict single-source-of-truth discipline:
-- **Primary Relational Store:** PostgreSQL 16 with `pgvector` extension (`pgvector/pgvector:pg16`, Port 15432).
-  - Holds all durable state: identity, organizations, canonical biomedical entities, aliases, observations, claims, evidence links, transactional outbox events, ingestion checkpoints, and wiki pages.
-  - Initialized with `infra/postgres/init.sql` (enabling `uuid-ossp`, `vector`, `pgcrypto`).
-  - Runtime access partitioned between administrative migration role (`ai_rxos`) and least-privilege application role (`ai_rxos_app`).
-- **Graph Store:** Neo4j 5.26-community (Bolt port 7687, HTTP port 7474).
-  - Maintained strictly as a **derived projection** of canonical entities and relationships. No updates originate in Neo4j directly.
-- **Cache & Ephemeral Store:** Redis 7-alpine (Port 6379).
-  - Manages session state, JWT blocklists, distributed locks, rate-limit buckets, agent execution checkpoints, and job streaming.
-- **Search Store:** OpenSearch 2.19.1 (Port 9200).
-  - Distributed search index for BM25 text retrieval, MeSH facets, and vector k-NN projection.
+Strict single-source-of-truth discipline across four specialized datastores:
+1. **Primary Relational Store:** PostgreSQL 16 with `pgvector` extension (`pgvector/pgvector:pg16`, Port 15432 / 5432).
+   - Holds durable state: identity, organizations, canonical biomedical entities, aliases, observations, claims, evidence links, transactional outbox events, ingestion checkpoints, and wiki pages.
+   - Initialized via `infra/postgres/init.sql` (`uuid-ossp`, `vector`).
+   - Partitioned permissions: migration role (`ai_rxos`) and least-privilege application role (`ai_rxos_app`).
+2. **Graph Store:** Neo4j 5.26-community (Bolt port 7687, HTTP port 7474).
+   - Strictly maintained as a **derived projection** of canonical entities and relationships. No write transactions originate in Neo4j directly.
+3. **Cache & Ephemeral Store:** Redis 7-alpine (Port 6379).
+   - Manages session state, JWT blocklists, distributed locks, rate-limit buckets, agent execution checkpoints, and job streaming.
+4. **Full-Text & Facet Search Store:** OpenSearch 2.19.1 (Port 9200).
+   - Distributed search index for BM25 text retrieval, MeSH facets, and k-NN vector projections.
 
 ### 2.4 Object-Relational Mapping (ORM) & Query Layer
-- **Go Microservices:** No ORM. Pure SQL with `jackc/pgx/v5` connection pooling, prepared statements, and direct struct scanning for maximum throughput and predictable memory allocations.
-- **Python Services:** No heavy ORM (neither SQLAlchemy ORM nor Django ORM are used for domain models). Database interaction utilizes `asyncpg` connection pools (`asyncpg.create_pool`) executing raw, parameterized SQL queries. Schema validation is handled exclusively by **Pydantic 2.10.4**.
+- **Go Microservices:** Zero ORM overhead. Uses `jackc/pgx/v5` connection pooling, prepared statements, and direct struct scanning for predictable memory allocations and sub-millisecond execution.
+- **Python Services:** No heavy ORM (neither SQLAlchemy ORM nor Django ORM are used for domain models). Database interaction utilizes `asyncpg` connection pools (`asyncpg.create_pool`) executing raw, parameterized SQL queries. Domain validation is handled exclusively by **Pydantic 2.10.4**.
 - **Migration Engine:** Service-specific SQL migration scripts executed idempotently at service startup via custom migration runners (`services/kg/app/database/`, `services/literature/app/database/`, `services/auth/migrations/`).
 
 ### 2.5 Authentication Infrastructure
@@ -74,6 +115,7 @@ The platform uses a polyglot persistence architecture with strict single-source-
   - Multi-Factor Authentication (MFA / TOTP) via standard RFC 6238 authenticator apps.
   - Granular API keys for automated integrations and worker processes.
   - Centralized gateway validation: `apps/api-gateway` validates incoming `Bearer` tokens on all non-public routes.
+- **BetterAuth Scaffold:** `services/auth-adapter` prepared for standard OAuth2 and SSO integration.
 
 ### 2.6 Authorization & Multi-Tenancy
 - **Access Control:** Multi-tier Role-Based Access Control (RBAC):
@@ -88,21 +130,21 @@ The platform uses a polyglot persistence architecture with strict single-source-
 - **Pattern:** Reverse-Proxy API Gateway.
 - **Gateway:** `apps/api-gateway` (Go) listening on `:8080`.
 - **Routing Rules:**
-  - `/api/v1/auth/*` $\to$ `auth:8081`
+  - `/api/v1/auth/*`, `/api/v1/organizations/*` $\to$ `auth:8081`
   - `/api/v1/papers/*`, `/api/v1/ingestion/*` $\to$ `literature:8082`
-  - `/api/v1/graph/*`, `/api/v1/canonical/*` $\to$ `kg:8083`
+  - `/api/v1/graph/*`, `/api/v1/ontologies/*`, `/api/v1/canonical/*` $\to$ `kg:8083`
   - `/api/v1/search/*` $\to$ `search:8084`
   - `/api/v1/agents/*` $\to$ `agents:8085`
   - `/api/v1/workflows/*` $\to$ `workflows:8086`
   - `/api/v1/reports/*` $\to$ `reports:8087`
   - `/api/v1/molecules/*`, `/api/v1/docking/*` $\to$ `docking:8088`
-  - `/api/v1/ai/*`, `/api/v1/decision/*` $\to$ `ai-services:8090`
+  - `/api/v1/ai/*` $\to$ `ai-services:8090`
   - `/api/v1/knowledge/*` $\to$ `knowledge-service:8091`
 - **Client SDK:** TypeScript SDK in `packages/sdk` wrapping gateway endpoints with Axios/Fetch and strong Zod typing.
 
 ### 2.8 Existing AI & LLM Integrations
 - **Model Registry (`services/agents/app/model_registry`):**
-  - Multi-provider abstraction: OpenAI, Anthropic, Google Gemini/Vertex, Ollama, and Mock/Internal.
+  - Multi-provider abstraction: OpenAI (`gpt-4o`, `gpt-4o-mini`), Anthropic (`claude-3-5-sonnet`), Google Gemini/Vertex, Ollama, and Mock/Internal.
   - Dynamically configured via `MODEL_REGISTRY_JSON`.
   - Supports SSE streaming for generative completions.
 - **Agent Orchestrator Harness (`services/agents/app/agent_harness`):**
@@ -111,15 +153,16 @@ The platform uses a polyglot persistence architecture with strict single-source-
   - Dynamic tool registry (`ToolRegistry`) with parameter schema validation.
   - Conversation memory store (`ConversationMemoryStore`) with Redis sliding window.
   - Multi-agent supervisor pattern (`MultiAgentOrchestrator`, `SupervisorDecision`).
-- **Decision Intelligence Engine (`apps/ai-services/app/opportunity_engine`):**
+- **Opportunity Decision Intelligence Engine (`apps/ai-services/app/opportunity_engine`):**
   - Multi-attribute utility Development Potential Scoring ($DPS$).
   - Calibrated Bayesian stage transition probability engine (Model v0.1).
   - Counterfactual historical backtesting engine with strict anti-leakage temporal cutoffs.
-  - Precision patient genomic stratification and resistance mechanism prediction.
+  - Precision patient genomic stratification, resistance prediction, CNS penetration, safety, and commercial opportunity analysis across 14 dedicated sub-engines.
 
 ### 2.9 Existing Vector & Search Infrastructure
 - **Hybrid Retrieval:** `services/search` executes hybrid search combining BM25 keyword matching via OpenSearch 2.19 and semantic retrieval via `services/llm-wiki`.
-- **RRF Reranking:** Implements Reciprocal Rank Fusion (RRF) algorithm to blend lexical and semantic result lists into unified ranked outputs.
+- **RRF Reranking:** Implements Reciprocal Rank Fusion (RRF) algorithm to blend lexical and semantic result lists into unified ranked outputs:
+  $$RRF(d) = \sum_{m \in M} \frac{1}{k + r_m(d)}$$
 - **Vector Storage:** PostgreSQL `pgvector` configured for dense embeddings (1536-dim), plus OpenSearch k-NN index support.
 
 ### 2.10 Existing Knowledge Graph Infrastructure
@@ -138,6 +181,8 @@ The platform uses a polyglot persistence architecture with strict single-source-
   - **ClinicalTrials.gov:** REST API v2 client with NCT search, study status normalization, and opaque page tokens.
   - **openFDA Drugs@FDA:** FDA application/submission events, NDA/BLA numbers, and regulatory decision records.
   - **Google Patents:** Patent family extraction, claim retrieval, and priority date tracking.
+- **NLP & Parsing Pipeline (`services/literature/app/nlp`):**
+  - Named Entity Recognition (`ner.py`), entity normalizer (`entity_normalizer.py`), relationship extraction (`relationships.py`), evidence ranker (`evidence_ranking.py`), and summarizer (`summarizer.py`).
 - **LLM Wiki Compiler (`services/llm-wiki`):**
   - Markdown ingestion, semantic sentence/paragraph chunking, SHA-256 content hashing, versioned page tracking, and tenant-isolated wiki query endpoint (`POST /llmwiki/query`).
 
@@ -150,144 +195,132 @@ The platform uses a polyglot persistence architecture with strict single-source-
   - Distributed execution locks with TTL.
   - Automatic idle worker reclaim (`AGENT_WORKER_RECLAIM_IDLE_SECONDS=60`).
   - Exponential backoff retry handling with Dead Letter Queue (DLQ) support.
-  - Literature checkpointed batch ingestion jobs.
+  - Checkpointed batch ingestion jobs.
 
-### 2.13 Existing Observability Infrastructure
-- **Distributed Tracing:** OpenTelemetry (OTel) instrumentation in Python and Go services (`OTEL_EXPORTER_OTLP_ENDPOINT`).
+### 2.13 Existing Queues & Event Streaming
+- **Redis Streams:** Distributed event streaming for asynchronous agent jobs, literature checkpointed batch ingestion, and transactional outbox projection replay to Neo4j and OpenSearch.
+- **Outbox Pattern:** Reliable at-least-once event delivery from PostgreSQL `canonical_projection_outbox` to downstream search and graph projections.
+
+### 2.14 Object Storage & Artifact Management
+- **Current Architecture:** Durable document storage utilizes PostgreSQL bytea, JSONB, and text columns (`documents.abstract`, `documents.summary`, `wiki_pages.content`).
+- **Artifact Caching:** Local scratch directory structures in agent containers for intermediate files and temporary computational states.
+- **Streaming Endpoints:** Report service (`services/reports`) streams generated Markdown dossiers and executive summaries directly via HTTP endpoints.
+- **Production Extension Path:** S3/MinIO compatible object store interface is architected for large-scale raw PDF/PDB binary storage.
+
+### 2.15 File Processing & Ingestion
+- **Document Parsers:** Specialized parsers in `services/literature/app/parsing/` (`parser.py`, `text_parser.py`, `duplicates.py`) handling XML, JSON, and raw text.
+- **Semantic Chunking:** `services/literature/app/services/chunking.py` splits scientific text along semantic boundaries (abstract, introduction, methods, results, discussion).
+- **Deduplication:** Hash-based and title-normalized deduplication prevents redundant processing of identical clinical trials or publications across sources.
+
+### 2.16 Observability Infrastructure
+- **Distributed Tracing:** OpenTelemetry (OTel) instrumentation across Python and Go services (`OTEL_EXPORTER_OTLP_ENDPOINT`).
 - **Metrics:** Prometheus scrape endpoints (`/metrics`) exposing request rates, latencies, job counts, and queue depth.
 - **Logging:** Structured JSON logging across all Python services (`python-json-logger`) and Go services (`requestLogger` middleware).
 - **Security Redaction:** In-flight log redaction engine (`services/agents/app/security/redaction.py`) sanitizing API keys, passwords, and sensitive biological sequences.
 
-### 2.14 Existing Testing Infrastructure
+### 2.17 Existing Testing Infrastructure
 - **Monorepo Orchestrator:** Turborepo 2.3+ (`turbo.json`) running parallelized `pnpm test`, `pnpm typecheck`, `pnpm lint`, and `pnpm build`.
 - **Python Testing:** `pytest` 8.3+ with `pytest-asyncio` and `httpx` TestClient across all Python services.
+  - Opportunity Engine test suite: **228 tests passing** in <4 seconds.
 - **TypeScript / Web Testing:** Vitest and Jest presets; TypeScript compiler (`tsc --noEmit`) enforced across packages.
-- **Go Testing:** Native `go test` integration test suites.
+- **Go Testing:** Native `go test ./...` test suites in `apps/api-gateway`, `services/auth`, and `services/search`.
 
-### 2.15 Existing Design System
-- **Package:** `packages/ui` (`@ai-rxos/ui`).
-- **Foundations:** Tailwind CSS 3.4, PostCSS, Radix UI primitives (`@radix-ui/react-*`), Lucide React icons, `class-variance-authority` (cva), `clsx`, `tailwind-merge`.
-- **Primitive Components:** `Button`, `Card`, `Badge`, `Input`, `Avatar`, `Dialog`, `DropdownMenu`, `ScrollArea`, `Tabs`, `Skeleton`, `Tooltip`, `Table`.
-
-### 2.16 Existing Dashboard Components
-- **Application Containers:** `DashboardLayout`, `ChatInterface`, `Timeline`, `Notebook`.
-- **Scientific Visualizers:** `DrugCard`, `KnowledgeCard`, `PaperViewer`, `GraphViewer`, `DockingViewer` (with 3D WebGL / Mol* integration).
-- **Data Visualizations:** `SimpleLineChart`, `SimpleBarChart`, `SimplePieChart`, `DataTable`.
-- **Oncology Decision Intelligence Widgets (`apps/web`):**
-  - `Header`: Workflow navigation bar and search autocomplete.
-  - `Sidebar`: 11 domain navigation sections.
-  - `CompareView`: Side-by-side asset comparison workspace.
-  - `RadarChart`: 6-axis multi-dimensional SVG biology radar.
-  - `DevelopmentPotentialMeter`: Dual circular SVG gauges with 5-tier colored scale.
-  - `StageTransitionBars`: Calibrated Bayesian progression probability bars.
-  - `KeyAttributesTable`: Side-by-side attribute matrix.
-  - `ResistanceCombinationsCard`: Predicted vs known resistance mechanisms with impact indicators.
-  - `SafetyToxicityCard`: Tolerability, DLTs, and therapeutic index comparison.
-  - `PatientMatchCard`: Genomic patient population match criteria.
-  - `BusinessLandscapeCard`: Ownership, patent exclusivity, and strategic actions.
-  - `EvidenceProvenanceModal`: Full audit trail showing PMIDs, NCTs, FDA submissions, and explicit unknowns.
-  - `ExportModal`: Export engine generating audited Markdown dossiers.
-
-### 2.17 Existing Deployment Configuration
-- **Local Development:** `docker-compose.yml` (multi-service configuration running all 13 services and 4 datastores with healthchecks and internal networking).
+### 2.18 Existing Deployment Configuration
+- **Local Development:** `docker-compose.yml` (multi-service topology running all 18 services and 4 datastores with healthchecks and internal networking).
 - **Production Containers:** Multi-stage Dockerfiles across all Go, Python, and Next.js projects.
 - **Kubernetes / Helm:**
   - Helm Umbrella Chart: `infra/helm/ai-rxos/` (`Chart.yaml`, `values.yaml`, `values-dev.yaml`, `values-prod.yaml`).
   - K8s Resources: Automated deployments, ClusterIP services, Ingress with TLS, Horizontal Pod Autoscalers (HPA), ConfigMaps, and ExternalSecrets integration.
   - Network Policies: `infra/k8s/network-policies.yaml` establishing pod-level isolation between ingress, gateway, application tiers, and databases.
 
-### 2.18 Existing Environment Configuration
-- **Global Variables:** `.env.example` defines 115 configuration variables spanning PostgreSQL, Neo4j, Redis, OpenSearch, JWT, Literature connectors, and service discovery URLs.
-- **Local Automation:** PowerShell setup script `scripts/bootstrap-local-env.ps1`.
-- **Service Configuration Loading:** `pydantic-settings` (`BaseSettings`) in Python services; environment configuration structs in Go services.
+### 2.19 CI/CD Pipeline
+- **GitHub Actions Workflow:** `.github/workflows/ci.yml` with parallel job matrices:
+  1. `js`: Lint, typecheck, and build Next.js applications and TypeScript packages.
+  2. `go`: Vet and build matrix for `apps/api-gateway`, `services/auth`, `services/search`.
+  3. `python`: Lint (Ruff), typecheck (Mypy), and test (Pytest) matrix across all 8 Python services.
+  4. `docker-build`: Multi-stage Docker build verification for every service image.
+  5. `helm-lint`: Helm dependency build and chart linting.
 
-### 2.19 Existing Reusable Packages
-- `packages/types`: Shared domain definitions, Zod schemas, and TypeScript interfaces (`@ai-rxos/types`).
-- `packages/ui`: Shared React components and scientific design system (`@ai-rxos/ui`).
-- `packages/sdk`: Typed API client for gateway consumption (`@ai-rxos/sdk`).
-- `packages/tenancy`: Multi-tenancy naming and claim specifications (`@ai-rxos/tenancy`).
-- `packages/audit-log`: Audit event schemas and sink interfaces (`@ai-rxos/audit-log`).
-- `config/eslint-config`, `config/typescript-config`: Shared linting and TypeScript compilation bases.
+### 2.20 Design System (`@ai-rxos/ui`)
+- **Package:** `packages/ui` (`@ai-rxos/ui`).
+- **Foundations:** Tailwind CSS 3.4, PostCSS, Radix UI primitives (`@radix-ui/react-*`), Lucide React icons, `class-variance-authority` (cva), `clsx`, `tailwind-merge`.
+- **Primitive Components:** `Button`, `Card`, `Badge`, `Input`, `Avatar`, `Dialog`, `DropdownMenu`, `ScrollArea`, `Tabs`, `Skeleton`, `Tooltip`, `Table`.
+- **Scientific Visualizers:** `DrugCard`, `KnowledgeCard`, `PaperViewer`, `GraphViewer`, `DockingViewer` (with 3D WebGL / Mol* integration).
+- **Data Visualizations:** `SimpleLineChart`, `SimpleBarChart`, `SimplePieChart`, `DataTable`.
 
-### 2.20 Existing Technical Debt & Operational Findings
-1. **Windows Standalone Symlink Restriction:** Next.js `output: "standalone"` previously failed on Windows hosts without Developer Mode due to symlink permissions (`EPERM -4048`). Solved by making standalone packaging conditional on `process.env.NEXT_STANDALONE === "true"`.
-2. **ESLint Conflict:** Monorepo ESLint configuration had double-registration conflicts with `@typescript-eslint/no-unused-expressions` when combining Next.js core web vitals with root configs.
-3. **Python Import Boundaries:** Running `pytest` from repository root fails because multiple services use the `app` namespace. Tests must always be run within each service root or with explicit service targets.
-4. **Outbox Projection Replay:** Neo4j and OpenSearch depend on asynchronous projection outbox replay from PostgreSQL. Background workers must be active to ensure read models do not lag behind write models.
-5. **Secondary Service Stubs:** Molecular docking (`services/docking`) currently utilizes heuristic scoring stubs rather than heavy biophysical energy minimization calculations. BetterAuth adapter (`services/auth-adapter`) is scaffolded but not yet wired to primary gateway routing.
+### 2.21 Reusable Components Inventory
+- **Decision Intelligence UI Modules (`packages/ui/src/components/decision/`):**
+  - `AssetHeader.tsx`: Comprehensive asset hero section with modality, stage, target, and status pills.
+  - `BadgesAndBanners.tsx`: Color-coded action banners (`PURSUE`, `PARTNER`, `LICENSE`, `MONITOR`, `AVOID`, `INSUFFICIENT_EVIDENCE`) and status badges.
+  - `BusinessCards.tsx`: Corporate ownership, patent expiry timeline, and deal intelligence cards.
+  - `DecisionPanels.tsx`: Comprehensive decision evaluation panels.
+  - `EvidenceComponents.tsx`: Verifiable citation cards, excerpt displays, and contradiction callouts.
+  - `ProfileCards.tsx`: Biology, clinical, safety, and resistance mechanism cards.
+  - `ScoringComponents.tsx`: Circular SVG gauges for Development Potential Score ($DPS$), Bayesian transition bars, and 6-axis radar charts.
+- **Domain Type Schemas (`packages/types/src/`):**
+  - Complete TypeScript interfaces and Zod schemas across 20 modules (`biology.ts`, `clinical.ts`, `cns.ts`, `combination.ts`, `commercial.ts`, `competitive.ts`, `discover.ts`, `evidence.ts`, `kg.ts`, `licensing.ts`, `opportunity.ts`, `patient_match.ts`, `pubmed.ts`, `regulatory.ts`, `resistance.ts`, `safety.ts`, `temporal.ts`).
 
 ---
 
 ## 3. Repository Architecture Map
 
-```mermaid
-graph TB
-    subgraph Client Tier
-        Web["apps/web (Port 3000)\nNext.js 14 / TypeScript / Tailwind\nNeoZenome Decision Workspace"]
-        Admin["apps/admin (Port 3001)\nNext.js 14 Admin Console"]
-    end
-
-    subgraph Gateway Tier
-        GW["apps/api-gateway (Port 8080)\nGo / chi router / Reverse Proxy\nJWT Validation / Rate Limiter"]
-    end
-
-    subgraph Service Tier - Go
-        Auth["services/auth (Port 8081)\nGo / chi / pgx\nIdentity, JWT, MFA, RBAC"]
-        Search["services/search (Port 8084)\nGo / chi / RRF\nHybrid Search"]
-    end
-
-    subgraph Service Tier - Python FastAPI
-        AI["apps/ai-services (Port 8090)\nFastAPI / Opportunity Engine\nScoring, Backtest, Patient Match"]
-        KG["services/kg (Port 8083)\nFastAPI / asyncpg\nCanonical Entities, Claims, Outbox"]
-        Lit["services/literature (Port 8082)\nFastAPI / asyncpg\nPubMed, Trials, FDA, Patents"]
-        Agents["services/agents (Port 8085)\nFastAPI / LangGraph / Redis\nAgent Harness, Memory, Tools"]
-        Wiki["services/llm-wiki (Port 8092)\nFastAPI / asyncpg\nDurable Wiki, Semantic Chunking"]
-        KG_BFF["apps/knowledge-service (Port 8091)\nFastAPI / Neo4j BFF"]
-        Workflows["services/workflows (Port 8086)\nFastAPI / Orchestration"]
-        Reports["services/reports (Port 8087)\nFastAPI / Dossiers"]
-        Docking["services/docking (Port 8088)\nFastAPI / Molecular Docking"]
-    end
-
-    subgraph Data Tier
-        PG[("PostgreSQL 16 + pgvector\n(Port 15432 / 5432)\nCanonical Source-of-Truth")]
-        N4J[("Neo4j 5.26\n(Port 7687 / 7474)\nDerived Graph Projection")]
-        REDIS[("Redis 7\n(Port 6379)\nJobs, Sessions, Checkpoints")]
-        OS[("OpenSearch 2.19\n(Port 9200)\nDerived Text & Facet Index")]
-    end
-
-    Web -->|HTTP| GW
-    Admin -->|HTTP| GW
-
-    GW -->|/api/v1/auth| Auth
-    GW -->|/api/v1/search| Search
-    GW -->|/api/v1/ai, /api/v1/decision| AI
-    GW -->|/api/v1/canonical, /api/v1/graph| KG
-    GW -->|/api/v1/papers, /api/v1/ingestion| Lit
-    GW -->|/api/v1/agents| Agents
-    GW -->|/api/v1/knowledge| KG_BFF
-    GW -->|/api/v1/workflows| Workflows
-    GW -->|/api/v1/reports| Reports
-    GW -->|/api/v1/docking| Docking
-
-    Auth --> PG
-    Auth --> REDIS
-    Search --> OS
-    Search --> Wiki
-    AI --> REDIS
-    KG --> PG
-    KG -->|Outbox Projection| N4J
-    Lit --> PG
-    Lit --> REDIS
-    Agents --> REDIS
-    Wiki --> PG
-    KG_BFF --> N4J
+```
+AI-RxOS-main/
+├── .github/workflows/ci.yml       # Monorepo CI/CD Pipeline
+├── apps/
+│   ├── admin/                     # Enterprise Admin Console (Next.js 14, :3001)
+│   ├── ai-services/               # Opportunity Decision Intelligence Engine (FastAPI, :8090)
+│   │   ├── app/
+│   │   │   ├── core/              # Config, settings, logging
+│   │   │   ├── opportunity_engine/ # 14 specialized decision & biological engines
+│   │   │   └── main.py            # FastAPI entry point mounting all routers
+│   │   └── tests/                 # 228 comprehensive Pytest test suites
+│   ├── api-gateway/               # Edge Reverse Proxy & JWT Auth (Go chi, :8080)
+│   ├── knowledge-service/         # Knowledge Graph BFF Facade (FastAPI, :8091)
+│   ├── storybook/                 # Design System Storybook Harness
+│   └── web/                       # Decision Workspace (NeoZenome, Next.js 14, :3000)
+│       └── src/
+│           ├── app/               # App Router pages and /api proxies
+│           ├── components/        # Decision UI views, gauges, radars, modals
+│           └── lib/               # Client fixtures, API clients, utilities
+├── config/                        # Shared ESLint and TypeScript configs
+├── data/                          # Shared data fixtures and references
+├── docs/
+│   ├── architecture/              # Architectural plans and assessments
+│   └── product/
+│       └── product-constitution.md # Supreme Product Charter (NZ-CONST-2026-v1.0)
+├── infra/
+│   ├── helm/ai-rxos/              # Kubernetes Helm Umbrella Chart
+│   ├── k8s/                       # Network policies, ingress manifests
+│   └── postgres/init.sql          # DB initialization (uuid-ossp, pgvector)
+├── packages/
+│   ├── audit-log/                 # Audit logging contracts (@ai-rxos/audit-log)
+│   ├── sdk/                       # TypeScript API client (@ai-rxos/sdk)
+│   ├── tenancy/                   # Multi-tenancy contracts (@ai-rxos/tenancy)
+│   ├── types/                     # Shared domain models & Zod schemas (@ai-rxos/types)
+│   └── ui/                        # Reusable scientific design system (@ai-rxos/ui)
+├── services/
+│   ├── agents/                    # LangGraph agent harness, workers, memory (:8085)
+│   ├── auth/                      # Go identity provider, JWT, MFA (:8081)
+│   ├── auth-adapter/              # BetterAuth TypeScript adapter (:8089)
+│   ├── docking/                   # Biophysical molecular docking interface (:8088)
+│   ├── kg/                        # Canonical KG, entities, outbox projection (:8083)
+│   ├── literature/                # PubMed, CT.gov, FDA, Patent ingestion (:8082)
+│   ├── llm-wiki/                  # Markdown wiki compiler & chunking (:8092)
+│   ├── reports/                   # Automated dossier & report generator (:8087)
+│   ├── search/                    # Go hybrid search & RRF engine (:8084)
+│   └── workflows/                 # Scientific workflow coordinator (:8086)
+├── docker-compose.yml             # Full 18-service local orchestrator
+├── package.json                   # Monorepo root package definition
+├── pnpm-workspace.yaml            # Monorepo workspace mapping
+└── turbo.json                     # Turborepo build pipeline definition
 ```
 
 ---
 
 ## 4. Dependency Map
 
-### 4.1 Internal Monorepo Package Dependencies
+### 4.1 Monorepo Package Dependency Topology
 ```mermaid
 graph LR
     types["@ai-rxos/types\n(packages/types)"]
@@ -296,9 +329,12 @@ graph LR
     tenancy["@ai-rxos/tenancy\n(packages/tenancy)"]
     audit["@ai-rxos/audit-log\n(packages/audit-log)"]
 
-    web["@ai-rxos/web (apps/web)"]
-    admin["@ai-rxos/admin (apps/admin)"]
+    web["apps/web\n(Decision Workspace)"]
+    admin["apps/admin\n(Admin Console)"]
+    storybook["apps/storybook\n(Component Catalog)"]
 
+    tenancy --> types
+    audit --> types
     types --> ui
     types --> sdk
     ui --> web
@@ -307,205 +343,122 @@ graph LR
     ui --> admin
     sdk --> admin
     types --> admin
-    tenancy --> types
-    audit --> types
+    ui --> storybook
 ```
 
-### 4.2 External Technology Dependencies
-| Category | Core Dependency | Version | Consumed By |
-|---|---|---|---|
-| Runtime | Node.js | v20+ (Active: v24.15) | `apps/web`, `apps/admin`, `packages/*` |
-| Package Manager | pnpm | 9.15.0 | Monorepo root |
-| Build System | Turborepo | 2.3+ | Monorepo root |
-| Language | Go | 1.23+ | `apps/api-gateway`, `services/auth`, `services/search` |
-| Language | Python | 3.12 | All Python services |
-| Web Framework | Next.js | 14.2.21 | `apps/web`, `apps/admin` |
-| UI Framework | React / Tailwind | 18.3.1 / 3.4.17 | `packages/ui`, frontends |
-| Python API | FastAPI / Uvicorn | 0.115.6 / 0.34.0 | All Python services |
-| Schema / Validation | Pydantic / Zod | 2.10.4 / 3.24+ | Python & TypeScript services |
-| Relational DB | PostgreSQL | 16 (pgvector) | Canonical store across services |
-| Graph DB | Neo4j | 5.26 | `services/kg`, `apps/knowledge-service` |
-| Cache & Queue | Redis | 7 | `services/auth`, `services/agents` |
-| Full-text Search | OpenSearch | 2.19.1 | `services/search` |
+### 4.2 Inter-Service Communication Flow
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as Scientist / Strategist
+    participant Web as apps/web (:3000)
+    participant GW as apps/api-gateway (:8080)
+    participant Auth as services/auth (:8081)
+    participant AI as apps/ai-services (:8090)
+    participant KG as services/kg (:8083)
+    participant Redis as Redis (:6379)
+    participant PG as PostgreSQL (:15432)
 
----
-
-## 5. Application Entry Points
-
-| Service / App | Language | Entry Point File | Default Port | Primary Responsibilities |
-|---|---|---|---|---|
-| `web` | TypeScript | `apps/web/src/app/page.tsx` | 3000 | Decision Intelligence Workspace (NeoZenome) |
-| `admin` | TypeScript | `apps/admin/src/app/page.tsx` | 3001 | Enterprise Administrative Console |
-| `api-gateway` | Go | `apps/api-gateway/cmd/gateway/main.go` | 8080 | Edge Routing, JWT Auth, Reverse Proxy |
-| `auth` | Go | `services/auth/cmd/auth/main.go` | 8081 | Authentication, Sessions, MFA, API Keys |
-| `literature` | Python | `services/literature/app/main.py` | 8082 | PubMed, Trials, FDA, Patent Ingestion |
-| `kg` | Python | `services/kg/app/main.py` | 8083 | Canonical Knowledge Graph & Outbox Projection |
-| `search` | Go | `services/search/cmd/search/main.go` | 8084 | Hybrid OpenSearch + LLM Wiki Search |
-| `agents` | Python | `services/agents/app/main.py` | 8085 | Agentic Harness, Model Registry, Tools |
-| `agents-worker` | Python | `services/agents/app/jobs/worker.py` | N/A | Distributed Background Job Execution Worker |
-| `workflows` | Python | `services/workflows/app/main.py` | 8086 | Multi-Step Scientific Workflow Orchestrator |
-| `reports` | Python | `services/reports/app/main.py` | 8087 | Automated Report & Dossier Generation |
-| `docking` | Python | `services/docking/app/main.py` | 8088 | Biophysical Molecular Docking & Scoring |
-| `auth-adapter` | TypeScript | `services/auth-adapter/src/index.ts` | 8089 | BetterAuth Plugin Integration Scaffold |
-| `ai-services` | Python | `apps/ai-services/app/main.py` | 8090 | Opportunity Discovery Engine Facade & APIs |
-| `knowledge-service` | Python | `apps/knowledge-service/app/main.py` | 8091 | Knowledge Graph BFF over Neo4j |
-| `llm-wiki` | Python | `services/llm-wiki/app/main.py` | 8092 | Persistent Semantic Wiki Compilation & Chunking |
-
----
-
-## 6. Database Architecture
-
-### 6.1 PostgreSQL Canonical Schema
-PostgreSQL is the single source of truth for all enterprise state:
-1. **Identity (`auth` schema):** `users`, `organizations`, `user_roles`, `sessions`, `mfa_credentials`, `api_keys`, `audit_events`.
-2. **Canonical Biomedical Foundation (`canonical_*` tables):**
-   - `canonical_entities`: Unique entity identity across sources (`id`, `entity_type`, `preferred_name`, `normalized_name`, `modality`, `lifecycle_status`, `visibility`, `organization_id`).
-   - `canonical_identifiers`: Namespaced source identifiers (e.g. `PMID:*`, `NCT:*`, `FDA:*`, `CAS:*`, `ChEMBL:*`).
-   - `canonical_aliases`: Synonyms, developmental code names (e.g., `BI-0631`, `PB272`), brand names.
-   - `canonical_observations`: Source facts and normalized observations linked to entities and relationships.
-   - `canonical_relationships`: Subject-predicate-object directed edges with temporal validity timestamps (`valid_from`, `valid_to`).
-   - `canonical_claims`: Scientific claims attributed to source records.
-   - `canonical_evidence_links`: Polarity-explicit links (`SUPPORTING` or `CONTRADICTING`) connecting claims to source records and observations.
-   - `canonical_projection_outbox`: Transactional event outbox capturing entity and relationship state changes for asynchronous projection to Neo4j and OpenSearch.
-3. **Literature & Document Processing:**
-   - `literature_records`: Raw and normalized records from PubMed, ClinicalTrials.gov, openFDA, Google Patents.
-   - `ingestion_jobs`: Durable job checkpoints, pagination tokens, and error logs.
-4. **LLM Wiki Store:**
-   - `wiki_pages`: Markdown pages with semantic headings.
-   - `wiki_chunks`: Semantic text chunks with 1536-dimensional `vector` embeddings for hybrid search.
-
-### 6.2 Derived Stores
-- **Neo4j:** Projects `(:Entity)` nodes with properties (`canonical_id`, `preferred_name`, `entity_type`) and `[:RELATED_TO]` edges (`predicate`, `confidence`). Replayed strictly from the PostgreSQL outbox.
-- **OpenSearch:** Indexes entities, literature abstracts, and wiki chunks with BM25 analyzer, MeSH facets, and k-NN vector embeddings.
-- **Redis:** Stores ephemeral task state, token revocations, and agent state graphs.
-
----
-
-## 7. Frontend Architecture
-
-The frontend follows a modern React Server Component (RSC) and Client Component architecture:
-```
-apps/web/src/
-├── app/
-│   ├── layout.tsx         # Global HTML layout, metadata, fonts, styles
-│   ├── page.tsx           # Primary application workspace controller
-│   ├── globals.css        # Tailwind directives and utility classes
-│   └── api/               # Next.js API Routes (Serverless backend facades)
-│       ├── health/        # Health check endpoint
-│       └── decision/      # Decision Engine API proxies
-│           ├── assets/    # Asset discovery & filtering endpoint
-│           └── compare/   # Head-to-head comparison proxy
-├── components/
-│   ├── Header.tsx         # Top application header, workflow navigation, search
-│   ├── Sidebar.tsx        # 11-section domain sidebar
-│   ├── CompareView.tsx    # Head-to-head multi-attribute comparison view
-│   ├── DiscoverView.tsx   # Asset filtering and discovery workspace
-│   ├── EvaluateView.tsx   # Single-asset dossier addressing all 21 key questions
-│   ├── PatientMatchView.tsx # Precision biomarker patient stratification
-│   ├── BacktestView.tsx   # Counterfactual historical backtesting simulator
-│   ├── OpportunitiesView.tsx # 6-action portfolio prioritization pipeline
-│   ├── RadarChart.tsx     # 6-axis interactive SVG multi-dimensional radar
-│   ├── DevelopmentPotentialMeter.tsx # Dual circular SVG gauge meters
-│   ├── StageTransitionBars.tsx # Calibrated Bayesian transition probability bars
-│   ├── KeyAttributesTable.tsx # Side-by-side attribute comparison table
-│   ├── ResistanceCombinationsCard.tsx # Resistance mechanisms & combination insights
-│   ├── SafetyToxicityCard.tsx # Tolerability, DLTs, and therapeutic index
-│   ├── PatientMatchCard.tsx # Best patient population & biomarker profiles
-│   ├── BusinessLandscapeCard.tsx # Owner, patent window, commercial value
-│   ├── EvidenceProvenanceModal.tsx # Full provenance audit trail & unknowns drawer
-│   └── ExportModal.tsx    # Markdown dossier exporter
-└── lib/
-    ├── data.ts            # Client data fixtures (Zongertinib, Neratinib, etc.)
-    └── types.ts           # Re-exported domain types from @ai-rxos/types
+    User->>Web: Navigate to Compare / Evaluate View
+    Web->>GW: GET /api/v1/decision/assets (Bearer JWT)
+    GW->>Auth: Validate JWT / Check Claims
+    Auth-->>GW: OK (claims: org_id, roles)
+    GW->>AI: Proxy request with X-User-Id, X-Organization-Id
+    AI->>Redis: Check cached asset evaluations
+    AI->>PG: Query canonical entities & verified evidence
+    AI-->>GW: Return AssetIntelligence Dossier
+    GW-->>Web: 200 OK (JSON Dossier)
+    Web-->>User: Render Gauges, Radar Chart, Evidence Drawer
 ```
 
 ---
 
-## 8. API Architecture
+## 5. Architectural Assessment: Strengths & Design Discipline
 
-All client requests route through `apps/api-gateway` (`:8080`).
+1. **Clear Separation of Concerns:**
+   - Go is leveraged where its strengths excel: high-throughput network routing, lightweight concurrency, low-latency JWT validation, and fast Reciprocal Rank Fusion.
+   - Python is leveraged where its ecosystem is unmatched: scientific computing, Pydantic domain modeling, Bayesian inference, and biophysical data structures.
+2. **Deterministic Source of Truth:**
+   - PostgreSQL is strictly enforced as the single source of truth. Neo4j and OpenSearch are read-optimized projections fed asynchronously via the transactional outbox pattern. This completely eliminates dual-write split-brain inconsistencies.
+3. **High Cohesion in Domain Modeling:**
+   - The Opportunity Decision Intelligence Engine in `apps/ai-services/app/opportunity_engine` is cleanly modularized into 14 domain-specific sub-packages (`biology`, `clinical`, `cns`, `combination`, `commercial`, `competitive`, `discover`, `evidence`, `kg`, `licensing`, `patient_match`, `regulatory`, `resistance`, `safety`).
+4. **Resilient Frontend with Graceful Degradation:**
+   - Next.js API route proxies (`apps/web/src/app/api/decision/`) implement automated fallback to curated client fixtures when backend services are offline, enabling offline demonstration, zero-downtime frontend development, and resilient user experiences.
 
-### 8.1 API Gateway Route Mapping
+---
+
+## 6. Technical Debt Assessment & Operational Findings
+
+| Area | Issue / Finding | Severity | Existing Mitigation | Recommended Permanent Fix |
+| :--- | :--- | :--- | :--- | :--- |
+| **API Gateway Routing** | `/api/v1/decision` route prefix is handled in FastAPI and Next.js proxies, but is missing from the explicit reverse-proxy map in `apps/api-gateway/internal/gateway/router.go`. | **Medium** | Next.js routes proxy directly or use localhost fallback. | Add `/api/v1/decision` $\to$ `cfg.AIServicesURL` in `router.go`. |
+| **Outbox Worker Daemon** | Outbox projection from PostgreSQL to Neo4j/OpenSearch executes via periodic script/trigger rather than a dedicated long-running background worker container. | **Medium** | Manual backfill scripts (`PHASE_2_NEO4J_BACKFILL.md`). | Implement continuous daemon in `services/kg` listening on PostgreSQL `LISTEN/NOTIFY` or Redis Stream. |
+| **Agent Tool Registration** | Opportunity Engine endpoints are fully implemented in FastAPI, but not yet exposed as callable tools in `services/agents/app/tool_registry`. | **Low** | Direct REST API calls from frontend. | Register Opportunity tools (`evaluate_asset`, `compare_assets`, `match_patient`) in the agent tool registry. |
+| **Windows Symlink Packaging** | Next.js `output: "standalone"` previously threw `EPERM -4048` on Windows developer environments without Developer Mode enabled. | **Low** | Conditionalized in `next.config.js` via `process.env.NEXT_STANDALONE === "true"`. | Maintained; documentation updated. |
+| **Docker Compose Scaling** | Full 18-service topology requires ~16GB RAM when running all datastores (Postgres, Neo4j, OpenSearch, Redis) concurrently. | **Low** | Profile-based service launching (`docker compose --profile core up`). | Formalize docker-compose profiles (`core`, `full`, `ai`, `kg`). |
+
+---
+
+## 7. Existing Code Reusability Inventory
+
+To avoid rewriting working infrastructure, the following production-grade assets MUST be reused directly:
+
+1. **Scoring & Bayesian Mathematics:**
+   - `apps/ai-services/app/opportunity_engine/scoring/engine.py`: Reusable implementation of Development Potential Score ($DPS$), component weights, and Bayesian stage transition probabilities.
+2. **Anti-Leakage Temporal Engine:**
+   - `apps/ai-services/app/opportunity_engine/temporal/`: Reusable temporal filter and leakage detector enforcing $\forall e, \text{date}(e) \le \tau_{\text{cutoff}}$.
+3. **Precision Patient Matcher:**
+   - `apps/ai-services/app/opportunity_engine/patient_match/engine.py`: Reusable genomic matching logic across exon 20 insertions, point mutations, and CNS metastases.
+4. **Scientific UI Components (`packages/ui`):**
+   - `RadarChart`, `DevelopmentPotentialMeter`, `StageTransitionBars`, `EvidenceProvenanceModal`, `ExportModal`, `DockingViewer` (Mol* 3D WebGL).
+5. **Canonical Domain Schemas:**
+   - `packages/types/src/`: 20 type modules with full Zod validation and TypeScript type exports.
+6. **Literature Ingestion Connectors:**
+   - `services/literature/app/connectors/`: Production-ready clients for PubMed NCBI E-Utilities, ClinicalTrials.gov REST API v2, and openFDA.
+7. **Authentication & Session Tokens:**
+   - `services/auth`: Production-ready Go JWT validation, TOTP MFA, and Redis session store.
+
+---
+
+## 8. Recommended Implementation Sequence
+
+To advance the platform efficiently without rewriting working infrastructure:
+
+```mermaid
+flowchart TD
+    P1["Phase 1: Gateway Routing Parity\nAdd /api/v1/decision to Go API Gateway"]
+    --> P2["Phase 2: Agent Tool Registration\nRegister Opportunity Engine tools in services/agents"]
+    --> P3["Phase 3: Ingestion-to-Intelligence Event Bridge\nStream PubMed & CT.gov ingestions to Opportunity Engine"]
+    --> P4["Phase 4: Continuous Outbox Projection Worker\nDaemonize PostgreSQL to Neo4j/OpenSearch sync"]
+    --> P5["Phase 5: Admin Console Portfolio Oversight\nEmbed Opportunity monitoring in apps/admin"]
+    --> P6["Phase 6: End-to-End Monorepo Integration Test\nFull multi-container validation across all 18 services"]
 ```
-Client Request
-      │
-      ▼
-┌───────────────────────────────────────────────┐
-│              apps/api-gateway                 │
-│         JWT Auth & Rate Limiting              │
-└───────┬──────────┬──────────┬──────────┬──────┘
-        │          │          │          │
-        ▼          ▼          ▼          ▼
-   /api/v1/auth /api/v1/search /api/v1/canonical /api/v1/decision
-        │          │          │          │
-        ▼          ▼          ▼          ▼
-   services/auth services/search services/kg apps/ai-services
-     (:8081)    (:8084)    (:8083)    (:8090)
-```
 
-### 8.2 Decision Intelligence API Contract
-Implemented in `apps/ai-services/app/opportunity_engine/api.py`:
-- `GET /api/v1/decision/assets`: List assets with filtering by `target` (e.g. HER2), `action` (e.g. PURSUE), and `stage`.
-- `GET /api/v1/decision/assets/{id}`: Detailed asset dossier with evidence lineage, contradictory observations, explicit unknowns, and AI inference declarations.
-- `POST /api/v1/decision/compare`: Head-to-head comparison payload comparing 2+ assets across 6 biology dimensions, transition probabilities, and attribute deltas.
-- `POST /api/v1/decision/patient-match`: Genomic biomarker patient stratification calculator.
-- `POST /api/v1/decision/backtest`: Historical counterfactual simulation enforcing strict temporal evidence cutoffs (zero information leakage).
-- `GET /api/v1/decision/opportunities`: 6-category portfolio prioritization matrix (PURSUE, INVESTIGATE, PARTNER, LICENSE, MONITOR, AVOID).
+### Phase 1: Gateway Routing Parity
+- **Target:** `apps/api-gateway/internal/gateway/router.go`.
+- **Action:** Add `/api/v1/decision` $\to$ `cfg.AIServicesURL` in the route map. Ensures seamless edge routing through `:8080` with rate limiting and audit logging.
 
----
+### Phase 2: Agent Tool Registration
+- **Target:** `services/agents/app/tool_registry/`.
+- **Action:** Expose Opportunity Engine functions (`discover_assets`, `evaluate_asset`, `compare_assets`, `match_patient`, `run_backtest`) as tools for autonomous LangGraph agents.
 
-## 9. AI Architecture
+### Phase 3: Ingestion-to-Intelligence Event Bridge
+- **Target:** `services/literature` $\to$ `services/kg` $\to$ `apps/ai-services`.
+- **Action:** Publish Redis stream events upon successful paper/trial ingestion, triggering incremental knowledge graph entity linking and asset evidence updates.
 
-The platform's AI subsystem is built on four pillars:
-1. **Model Abstraction Layer (`services/agents/app/model_registry`):**
-   - Agnostic model client supporting OpenAI (`gpt-4o`, `gpt-4o-mini`), Anthropic (`claude-3-5-sonnet`), and Google Vertex/Gemini.
-   - Standardized temperature, token limits, and response schemas.
-2. **State Graph Agent Runtime (`services/agents/app/agent_harness`):**
-   - Cyclic graph execution based on state machines (`AgentState`).
-   - Planner agent dynamically sequences sub-tasks into executable steps.
-   - Redis-backed checkpointing enables deterministic replay and long-running job persistence.
-3. **Decision Intelligence Scoring Engine (`apps/ai-services/app/opportunity_engine/scoring`):**
-   - **Development Potential Score ($DPS$):** Weighted multi-attribute utility function calibrated to oncology clinical progression benchmarks.
-   - **Stage Transition Probabilities:** Bayesian progression model (Model v0.1) forecasting Preclinical $\to$ IND, Phase I $\to$ II, Phase II $\to$ III, and Phase III $\to$ Approval.
-4. **Evidence-First Guardrails:**
-   - Every factual assertion links to verified persistent source identifiers (`PMID`, `NCT`, `FDA NDA/BLA`, `US Patent`).
-   - Preservation of contradictory evidence (prevents confirmation bias).
-   - Explicit unknowns cataloging clinical and translational knowledge gaps.
-   - Mandatory disclaimer: IP/FTO notes are not legal advice.
+### Phase 4: Continuous Outbox Projection Worker
+- **Target:** `services/kg/app/projection/`.
+- **Action:** Deploy an asynchronous worker daemon that continuously consumes `canonical_projection_outbox` events and updates Neo4j graph nodes and OpenSearch documents.
+
+### Phase 5: Admin Console Portfolio Oversight
+- **Target:** `apps/admin/src/app/`.
+- **Action:** Embed portfolio monitoring, model latency metrics, and ingestion throughput dashboards in the administrative console.
+
+### Phase 6: End-to-End Monorepo Integration Testing & Production Hardening
+- **Target:** Monorepo root and CI.
+- **Action:** Execute end-to-end integration tests with live containers validating the complete flow from literature ingestion to executive decision dossier export.
 
 ---
 
-## 10. Reusable Component Inventory
-
-### 10.1 UI Primitives (`@ai-rxos/ui`)
-- Layout & Foundation: `Button`, `Card`, `Badge`, `Input`, `Avatar`, `Dialog`, `DropdownMenu`, `ScrollArea`, `Tabs`, `Skeleton`, `Tooltip`, `Table`, `DataTable`.
-- Visualizations: `SimpleLineChart`, `SimpleBarChart`, `SimplePieChart`.
-- Scientific Widgets: `DrugCard`, `KnowledgeCard`, `PaperViewer`, `GraphViewer`, `DockingViewer`.
-- Application Containers: `DashboardLayout`, `ChatInterface`, `Timeline`, `Notebook`.
-
-### 10.2 Domain Models (`@ai-rxos/types`)
-- Shared schemas: `User`, `Organization`, `Paper`, `GraphEntity`, `CanonicalEntity`, `CanonicalObservation`, `CanonicalRelationship`, `CanonicalClaim`, `CanonicalEvidenceLink`.
-- Decision intelligence schemas: `AssetIntelligence`, `StrategicAction`, `DevelopmentStage`, `EvidenceItem`, `EvidencePolarity`, `BiologyProfileMetrics`, `StageTransitionProbabilities`, `ResistanceMechanism`, `RecommendedCombination`, `SafetyToxicityProfile`, `PatientMatchProfile`, `BusinessCompetitiveProfile`, `DecisionRecommendation`, `HistoricalBacktestResult`.
-
----
-
-## 11. Missing Capabilities & Gaps Prior to Implementation
-
-1. **Automated Ingestion-to-Intelligence Ingestion Pipeline:** Automated ingestion records from PubMed and ClinicalTrials currently enter the canonical store, but automatic scoring pipeline triggering for newly discovered assets requires manual initiation.
-2. **Dynamic Live Agent Tool Integration:** While the Agent Harness in `services/agents` supports custom tools, the Opportunity Discovery Engine endpoints are not yet registered as standard agent tools in `services/agents/app/tool_registry`.
-3. **Multi-Asset Radar Dimension Configuration:** The radar chart currently compares 6 fixed dimensions; dynamic expansion to user-selected biological metrics (e.g. off-target kinome selectivity, metabolic stability) should be configurable.
-4. **Automated Outbox Worker Daemon:** The outbox projection in `services/kg` currently executes via periodic script/request triggers rather than a continuous long-running daemon.
-5. **Gateway Route Parity for Admin Console:** `apps/admin` needs direct dashboard embedding for monitoring queue health, model latencies, and evidence ingestion status.
-
----
-
-## 12. Recommended Implementation Sequence
-
-To advance the platform from the current baseline to an end-to-end connected production deployment:
-
-1. **Phase 1: Agentic Decision Tool Registration (`services/agents`):** Register the Opportunity Engine endpoints as first-class tools within the agent harness so autonomous agents can discover, evaluate, and compare assets during chat and workflow tasks.
-2. **Phase 2: Ingestion-to-Intelligence Event Bridge (`services/literature` $\to$ `services/kg` $\to$ `apps/ai-services`):** Wire Redis stream events so that when new PubMed papers or ClinicalTrials are ingested, canonical assets and evidence links are updated automatically.
-3. **Phase 3: Gateway Reverse Proxy Route Hardening:** Validate that `apps/api-gateway` proxies `/api/v1/decision/*` directly to `ai-services:8090` in all environments with rate limiting and audit logging.
-4. **Phase 4: Admin Console Opportunity & Pipeline Monitoring (`apps/admin`):** Implement the portfolio monitoring view in the admin application for organizational oversight.
-5. **Phase 5: Continuous Outbox Projection Worker:** Deploy an asynchronous worker to continuously stream canonical updates into Neo4j and OpenSearch.
-6. **Phase 6: End-to-End Monorepo Integration Testing & Production Hardening:** Validate cross-service integration with live containers under load.
+*Authored by Neozenone AI Principal Architecture Group.*  
+*AI-RxOS: Grounded in Evidence, Built for Decisions.*

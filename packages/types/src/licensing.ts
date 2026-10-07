@@ -10,19 +10,14 @@ export const LicensingStatusSchema = z.enum([
   "POTENTIALLY_AVAILABLE",
   "PARTNERED",
   "OWNERSHIP_UNCLEAR",
+  "NO_PUBLIC_SIGNAL",
   "NO_PUBLIC_LICENSING_SIGNAL",
   "UNKNOWN",
 ]);
 export type LicensingStatus = z.infer<typeof LicensingStatusSchema>;
 
-export const DealTypeSchema = z.enum([
-  "ACQUISITION",
-  "ASSET_TRANSFER",
-  "LICENSING_ANNOUNCEMENT",
-  "CO_DEVELOPMENT",
-  "OPTION_AGREEMENT",
-]);
-export type DealType = z.infer<typeof DealTypeSchema>;
+import { DealTypeSchema, DealType } from "./canonical_domain";
+export { DealTypeSchema, type DealType };
 
 export const PatentJurisdictionSchema = z.enum([
   "US",
@@ -96,6 +91,8 @@ export const OwnershipAndDealEventSchema = z.object({
   disclosed_upfront_usd: z.number().int().nullable().optional(),
   disclosed_milestones_usd: z.number().int().nullable().optional(),
   royalty_rate_pct: z.string().nullable().optional(),
+  funding_round: z.string().nullable().optional(),
+  investors: z.array(z.string()).default([]),
   summary: z.string(),
   source_citation: z.string(),
   source_url: z.string().nullable().optional(),
@@ -112,6 +109,7 @@ export const AssetOwnershipProfileSchema = z.object({
   current_owner: z.string(),
   former_owners: z.array(z.string()).default([]),
   academic_origin: z.string().nullable().optional(),
+  partner: z.string().nullable().optional(),
   licensing_status: LicensingStatusSchema.default("UNKNOWN"),
   licensing_status_rationale: z.string().default(""),
   licensing_status_verified: z.boolean().default(false),
@@ -124,3 +122,16 @@ export const AssetOwnershipProfileSchema = z.object({
   updated_at: z.string().datetime().optional(),
 });
 export type AssetOwnershipProfile = z.infer<typeof AssetOwnershipProfileSchema>;
+
+export const BatchPatentIngestRequestSchema = z.object({
+  patents: z.array(PatentRecordSchema),
+});
+export type BatchPatentIngestRequest = z.infer<typeof BatchPatentIngestRequestSchema>;
+
+export const BatchPatentIngestResponseSchema = z.object({
+  total_submitted: z.number().int(),
+  total_ingested: z.number().int(),
+  patents: z.array(PatentRecordSchema),
+});
+export type BatchPatentIngestResponse = z.infer<typeof BatchPatentIngestResponseSchema>;
+

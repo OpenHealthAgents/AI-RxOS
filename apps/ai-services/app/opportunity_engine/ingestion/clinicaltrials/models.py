@@ -123,6 +123,8 @@ class ClinicalTrialRecord(BaseModel):
     results: Optional[Dict[str, Any]] = None
     adverse_events: List[AdverseEventItem] = Field(default_factory=list)
     termination_reason: Optional[str] = None
+    termination: Optional[str] = None
+    why_stopped: Optional[str] = None
     withdrawal_reason: Optional[str] = None
     publication_links: List[str] = Field(default_factory=list)
     start_date: Optional[date] = None
@@ -142,6 +144,15 @@ class ClinicalTrialRecord(BaseModel):
         return hasher.hexdigest()
 
     def model_post_init(self, __context: Any) -> None:
+        if not self.termination_reason:
+            if self.termination:
+                self.termination_reason = self.termination
+            elif self.why_stopped:
+                self.termination_reason = self.why_stopped
+        if not self.termination and self.termination_reason:
+            self.termination = self.termination_reason
+        if not self.why_stopped and self.termination_reason:
+            self.why_stopped = self.termination_reason
         if not self.content_hash:
             self.content_hash = self.compute_content_hash()
 

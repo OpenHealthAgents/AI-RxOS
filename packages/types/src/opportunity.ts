@@ -12,15 +12,27 @@ export type StrategicAction = z.infer<typeof StrategicActionSchema>;
 
 export const DevelopmentStageSchema = z.enum([
   "Preclinical",
+  "IND-enabling",
   "Phase I",
+  "Phase Ib",
   "Phase II",
+  "Phase II/III",
   "Phase III",
+  "Regulatory review",
   "Approved",
+  "Withdrawn",
   "Terminated",
+  "Discontinued",
 ]);
 export type DevelopmentStage = z.infer<typeof DevelopmentStageSchema>;
 
-export const EvidencePolaritySchema = z.enum(["SUPPORTING", "CONTRADICTING"]);
+export const EvidencePolaritySchema = z.enum([
+  "SUPPORTING",
+  "CONTRADICTING",
+  "CONTRADICTORY",
+  "NEUTRAL",
+  "UNKNOWN",
+]);
 export type EvidencePolarity = z.infer<typeof EvidencePolaritySchema>;
 
 export const EvidenceItemSchema = z.object({

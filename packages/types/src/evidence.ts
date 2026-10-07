@@ -4,6 +4,10 @@ import {
   ScientificEvidenceStateSchema,
   StrategicActionSchema,
 } from "./opportunity";
+import {
+  EvidenceTemporalMetadataSchema,
+  EvidenceTemporalMetadata,
+} from "./temporal";
 
 export const SourceTypeSchema = z.enum([
   "publication",
@@ -51,6 +55,48 @@ export const ConfidenceLevelSchema = z.enum([
   "insufficient",
 ]);
 export type ConfidenceLevel = z.infer<typeof ConfidenceLevelSchema>;
+
+export const StudyDesignTypeSchema = z.enum([
+  "rct_double_blind",
+  "rct_open_label",
+  "prospective_cohort",
+  "phase_1_2_single_arm",
+  "retrospective_observational",
+  "in_vivo_animal_disease_model",
+  "ex_vivo_patient_tissue",
+  "in_vitro_cell_line",
+  "biochemical_kinase_assay",
+  "case_report_series",
+  "computational_prediction",
+]);
+export type StudyDesignType = z.infer<typeof StudyDesignTypeSchema>;
+
+export const ModelRelevanceSchema = z.enum([
+  "direct_human_clinical",
+  "patient_derived_xenograft",
+  "syngeneic_animal_model",
+  "isogenic_engineered_line",
+  "immortalized_cell_line",
+  "recombinant_cell_free_assay",
+  "computational_silico",
+]);
+export type ModelRelevance = z.infer<typeof ModelRelevanceSchema>;
+
+export const DirectnessLevelSchema = z.enum([
+  "direct",
+  "proximate",
+  "surrogate",
+  "indirect",
+]);
+export type DirectnessLevel = z.infer<typeof DirectnessLevelSchema>;
+
+export const ReplicationStatusSchema = z.enum([
+  "independently_replicated",
+  "internally_replicated",
+  "single_study_unreplicated",
+  "contradicted",
+]);
+export type ReplicationStatus = z.infer<typeof ReplicationStatusSchema>;
 
 export const ClaimTypeSchema = z.enum([
   "efficacy",
@@ -102,6 +148,7 @@ export const EvidenceQualitySchema = z.object({
   reproducibility_flag: z.boolean().default(true),
   quality_grade: QualityGradeSchema.default("GRADE_A_HIGH"),
   scoring_breakdown: z.record(z.string(), z.number()).default({}),
+  limitations: z.array(z.string()).default([]),
 });
 export type EvidenceQuality = z.infer<typeof EvidenceQualitySchema>;
 
@@ -115,6 +162,30 @@ export const EvidenceConfidenceSchema = z.object({
   calibration_notes: z.string().nullable().optional(),
 });
 export type EvidenceConfidence = z.infer<typeof EvidenceConfidenceSchema>;
+
+export const QualityDimensionScoreSchema = z.object({
+  dimension: z.string(),
+  weight: z.number(),
+  raw_score: z.number().min(0).max(100),
+  weighted_score: z.number(),
+  notes: z.string(),
+});
+export type QualityDimensionScore = z.infer<typeof QualityDimensionScoreSchema>;
+
+export const EvidenceQualityAppraisalSchema = z.object({
+  overall_quality_score: z.number().min(0).max(100),
+  quality_grade: QualityGradeSchema,
+  calibrated_confidence: z.number().min(0).max(1.0),
+  confidence_level: ConfidenceLevelSchema,
+  dimension_scores: z.record(z.string(), QualityDimensionScoreSchema),
+  scoring_breakdown: z.record(z.string(), z.number()),
+  quality: EvidenceQualitySchema,
+  confidence: EvidenceConfidenceSchema,
+  limitations: z.array(z.string()).default([]),
+  is_high_confidence_claim_allowed: z.boolean().default(true),
+  epistemic_warning: z.string().nullable().optional(),
+});
+export type EvidenceQualityAppraisal = z.infer<typeof EvidenceQualityAppraisalSchema>;
 
 // ==============================================================================
 // 2. Citations & Sources
@@ -151,10 +222,12 @@ export const EvidenceSourceSchema = z.object({
   model: z.string().nullable().optional(),
   sample_size: z.number().int().nullable().optional(),
   peer_reviewed: z.boolean().default(true),
+  peer_review_status: z.string().nullable().optional(),
   prospective_or_retrospective: ProspectiveOrRetrospectiveSchema.default("not_applicable"),
   quality_score: z.number().min(0).max(100).default(85.0),
   confidence: z.number().min(0).max(1.0).default(0.90),
   temporal_validity: EvidenceTemporalScopeSchema,
+  temporal_metadata: EvidenceTemporalMetadataSchema.optional(),
   quality: EvidenceQualitySchema.optional(),
   confidence_details: EvidenceConfidenceSchema.optional(),
   citation: EvidenceCitationSchema.optional(),
@@ -182,6 +255,7 @@ export type EvidenceExtraction = z.infer<typeof EvidenceExtractionSchema>;
 
 export const EvidenceObservationRichSchema = z.object({
   id: z.string().uuid(),
+  evidence_id: z.string().uuid(),
   extraction_id: z.string().uuid().nullable().optional(),
   source_id: z.string().uuid(),
   source_ref: z.string(),
@@ -197,6 +271,7 @@ export const EvidenceObservationRichSchema = z.object({
   confidence: z.number().min(0).max(1.0).default(0.90),
   polarity: EvidencePolaritySchema.default("SUPPORTING"),
   observation_state: ScientificEvidenceStateSchema.default("verified_fact"),
+  temporal_metadata: EvidenceTemporalMetadataSchema.optional(),
   created_at: z.string().datetime().optional(),
 });
 export type EvidenceObservationRich = z.infer<typeof EvidenceObservationRichSchema>;
@@ -294,10 +369,12 @@ export const EvidenceRecordSchema = z.object({
   model: z.string().nullable().optional(),
   sample_size: z.number().int().nullable().optional(),
   peer_reviewed: z.boolean().default(true),
+  peer_review_status: z.string().nullable().optional(),
   prospective_or_retrospective: ProspectiveOrRetrospectiveSchema.default("not_applicable"),
   quality_score: z.number().min(0).max(100).default(85.0),
   confidence: z.number().min(0).max(1.0).default(0.90),
   temporal_validity: EvidenceTemporalScopeSchema,
+  temporal_metadata: EvidenceTemporalMetadataSchema.optional(),
   quality: EvidenceQualitySchema,
   confidence_details: EvidenceConfidenceSchema,
   citation: EvidenceCitationSchema,
@@ -320,3 +397,53 @@ export const EvidenceLineageGraphSchema = z.object({
   orphaned_components: z.array(z.string()).default([]),
 });
 export type EvidenceLineageGraph = z.infer<typeof EvidenceLineageGraphSchema>;
+
+// ==============================================================================
+// 7. Evidence Ranking Schemas (9 Dimensions)
+// ==============================================================================
+
+export const EvidenceRankingTierSchema = z.enum([
+  "TIER_1_PINNACLE",
+  "TIER_2_HIGH",
+  "TIER_3_MODERATE",
+  "TIER_4_LOW",
+  "TIER_5_INSUFFICIENT",
+]);
+export type EvidenceRankingTier = z.infer<typeof EvidenceRankingTierSchema>;
+
+export const RankingDimensionDetailSchema = z.object({
+  dimension: z.string(),
+  weight: z.number(),
+  raw_score: z.number().min(0).max(100),
+  weighted_score: z.number(),
+  justification: z.string(),
+});
+export type RankingDimensionDetail = z.infer<typeof RankingDimensionDetailSchema>;
+
+export const EvidenceRankingRecordSchema = z.object({
+  ranking: z.number().int().positive(),
+  evidence_id: z.string(),
+  title: z.string(),
+  source_citation: z.string(),
+  source_type: z.string(),
+  publication_date: z.string().nullable().optional(),
+  composite_rank_score: z.number().min(0).max(100),
+  ranking_tier: EvidenceRankingTierSchema,
+  calibrated_confidence: z.number().min(0).max(1),
+  is_temporally_valid: z.boolean().default(true),
+  dimension_scores: z.record(z.string(), RankingDimensionDetailSchema).default({}),
+  ranking_rationale: z.string(),
+  key_strengths: z.array(z.string()).default([]),
+  limitations: z.array(z.string()).default([]),
+});
+export type EvidenceRankingRecord = z.infer<typeof EvidenceRankingRecordSchema>;
+
+export const EvidenceRankingResultSchema = z.object({
+  query_context: z.string().nullable().optional(),
+  as_of_date: z.string(),
+  total_candidates: z.number().int().nonnegative(),
+  ranked_evidence: z.array(EvidenceRankingRecordSchema),
+  ranking_summary: z.string(),
+});
+export type EvidenceRankingResult = z.infer<typeof EvidenceRankingResultSchema>;
+

@@ -245,3 +245,15 @@ export function CommercialOpportunityCard({
     </div>
   );
 }
+
+// Canonical Aliases matching Design System requirements
+export const CompetitiveLandscape = CompetitiveLandscapeCard;
+export type CompetitiveLandscapeProps = CompetitiveLandscapeCardProps;
+
+export const LicensingProfile = LicensingCard;
+export type LicensingProfileProps = LicensingCardProps;
+export const LicensingProfileCard = LicensingCard;
+
+export const CommercialOpportunity = CommercialOpportunityCard;
+export type CommercialOpportunityProps = CommercialOpportunityCardProps;
+

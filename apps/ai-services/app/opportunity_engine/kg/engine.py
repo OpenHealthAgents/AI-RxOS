@@ -6,6 +6,9 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 from uuid import UUID, uuid4
 
 from .models import (
+    AssetOpportunityGraph,
+    CANONICAL_ONCOLOGY_RELATIONSHIPS,
+    CANONICAL_RELATIONSHIP_CATEGORY_MAP,
     EdgeEvidenceProvenance,
     GraphNodeSummary,
     GraphPathMatch,
@@ -13,7 +16,9 @@ from .models import (
     KGNode,
     KGNodeType,
     KGRelationshipType,
+    MissingEvidenceProvenanceError,
     OncologyGraphQueryResult,
+    RelationshipProvenanceDetail,
 )
 
 logger = logging.getLogger(__name__)
@@ -77,7 +82,18 @@ class OncologyKnowledgeGraphEngine:
         confidence: float = 1.0,
         properties: Optional[Dict[str, Any]] = None,
         evidence: Optional[List[EdgeEvidenceProvenance]] = None,
+        strict_provenance: bool = True,
     ) -> KGEdge:
+        """
+        Adds a directed relationship connecting two nodes.
+        Enforces invariant: Every graph relationship must retain evidence provenance.
+        """
+        if strict_provenance and (not evidence or len(evidence) == 0):
+            raise MissingEvidenceProvenanceError(
+                f"Relationship '{relationship_type.value}' connecting {source_node_id} -> {target_node_id} "
+                "must retain evidence provenance."
+            )
+
         edge = KGEdge(
             source_node_id=source_node_id,
             relationship_type=relationship_type,
@@ -105,6 +121,119 @@ class OncologyKnowledgeGraphEngine:
         if rel_type:
             return [e for e in edges if e.relationship_type == rel_type]
         return edges
+
+    # --------------------------------------------------------------------------
+    # Oncology Opportunity Graph Query & Provenance Validation
+    # --------------------------------------------------------------------------
+
+    def get_asset_opportunity_graph(self, asset_id: UUID) -> AssetOpportunityGraph:
+        """
+        Builds the complete Oncology Opportunity Graph for an asset covering all 15
+        canonical biomedical and commercial relationships with full evidence provenance.
+        """
+        asset_node = self.get_node(asset_id)
+        if not asset_node or asset_node.node_type != KGNodeType.ASSET:
+            raise KeyError(f"Asset node '{asset_id}' not found in knowledge graph.")
+
+        outgoing = self._outgoing_edges.get(asset_id, [])
+        by_category: Dict[str, List[RelationshipProvenanceDetail]] = {
+            cat: [] for cat in CANONICAL_RELATIONSHIP_CATEGORY_MAP.keys()
+        }
+
+        # Map each relationship type to canonical category string
+        rel_to_cat = {v: k for k, v in CANONICAL_RELATIONSHIP_CATEGORY_MAP.items()}
+
+        for edge in outgoing:
+            cat = rel_to_cat.get(edge.relationship_type)
+            if not cat:
+                if edge.relationship_type == KGRelationshipType.COMPETES_WITH:
+                    cat = "competitor"
+                else:
+                    continue
+
+            target_node = self.get_node(edge.target_node_id)
+            if not target_node:
+                continue
+
+            detail = RelationshipProvenanceDetail(
+                edge_id=edge.id,
+                relationship_type=edge.relationship_type,
+                relationship_category=f"Asset → {cat.replace('_', ' ').title()}",
+                source_node=GraphNodeSummary(
+                    node_id=asset_node.id,
+                    node_type=asset_node.node_type,
+                    name=asset_node.name,
+                    display_label=asset_node.display_label,
+                    properties=asset_node.properties,
+                ),
+                target_node=GraphNodeSummary(
+                    node_id=target_node.id,
+                    node_type=target_node.node_type,
+                    name=target_node.name,
+                    display_label=target_node.display_label,
+                    properties=target_node.properties,
+                ),
+                confidence=edge.confidence,
+                properties=edge.properties,
+                evidence_lineage=edge.evidence_lineage,
+            )
+            by_category[cat].append(detail)
+
+        total_relationships = sum(len(items) for items in by_category.values())
+        covered = [k for k, v in by_category.items() if len(v) > 0]
+        all_provenance = all(len(edge.evidence_lineage) > 0 for edge in outgoing)
+
+        return AssetOpportunityGraph(
+            asset_id=asset_node.id,
+            asset_name=asset_node.name,
+            total_relationships=total_relationships,
+            relationships_by_category=by_category,
+            covered_categories=covered,
+            all_relationships_have_provenance=all_provenance,
+        )
+
+    def get_asset_relationships_by_category(
+        self,
+        asset_id: UUID,
+        category: str,
+    ) -> List[RelationshipProvenanceDetail]:
+        """Queries relationships of a specific canonical category for an asset."""
+        opp_graph = self.get_asset_opportunity_graph(asset_id)
+        cat_key = category.strip().lower().replace(" ", "_").replace("-", "_")
+        return opp_graph.relationships_by_category.get(cat_key, [])
+
+    def validate_all_graph_relationships_have_provenance(self) -> Tuple[bool, int, List[UUID]]:
+        """
+        Audits that 100% of relationships in the graph retain evidence provenance.
+        Returns: (all_valid: bool, total_edges: int, invalid_edge_ids: List[UUID])
+        """
+        invalid_edges = [
+            edge.id for edge in self._edges.values()
+            if not edge.evidence_lineage or len(edge.evidence_lineage) == 0
+        ]
+        return len(invalid_edges) == 0, len(self._edges), invalid_edges
+
+    def get_provenance_audit_summary(self) -> Dict[str, Any]:
+        """Provides an evidence provenance audit summary across the entire knowledge graph."""
+        total_edges = len(self._edges)
+        edges_with_provenance = sum(1 for e in self._edges.values() if e.evidence_lineage)
+        evidence_type_counts: Dict[str, int] = {}
+
+        for edge in self._edges.values():
+            for ev in edge.evidence_lineage:
+                evidence_type_counts[ev.evidence_type] = evidence_type_counts.get(ev.evidence_type, 0) + 1
+
+        all_valid, _, invalid_ids = self.validate_all_graph_relationships_have_provenance()
+
+        return {
+            "total_nodes": len(self._nodes),
+            "total_edges": total_edges,
+            "edges_with_provenance": edges_with_provenance,
+            "provenance_compliance_pct": round((edges_with_provenance / max(1, total_edges)) * 100.0, 2),
+            "all_relationships_have_provenance": all_valid,
+            "evidence_distribution": evidence_type_counts,
+            "invalid_edge_count": len(invalid_ids),
+        }
 
     # --------------------------------------------------------------------------
     # 10 Canonical Graph Question Solvers
@@ -675,9 +804,13 @@ class OncologyKnowledgeGraphEngine:
         # Nodes: Patents & Licenses & Regulatory Events
         n_pat_zong = self.add_node(KGNodeType.PATENT, "PAT:US11814374", "US 11,814,374 (Zongertinib)", "Covalent HER2 kinase inhibitors sparing wild-type EGFR", {"claim_type": "COMPOSITION_OF_MATTER", "expiry": "2040-12-10"})
         n_pat_tuc = self.add_node(KGNodeType.PATENT, "PAT:US8648075", "US 8,648,075 (Tucatinib)", "Substituted pyrimidinyl-pyridinyl compounds as kinase inhibitors", {"claim_type": "COMPOSITION_OF_MATTER", "expiry": "2031-08-22"})
+        n_pat_pozi = self.add_node(KGNodeType.PATENT, "PAT:US8188085", "US 8,188,085 (Poziotinib)", "Quinazoline derivatives as kinase inhibitors", {"claim_type": "COMPOSITION_OF_MATTER", "expiry": "2030-03-14"})
+        n_lic_zong = self.add_node(KGNodeType.LICENSE, "LIC:BOEHRINGER_INTERNAL", "Boehringer Proprietary Pipeline", "Wholly owned internal development program", {"status": "NO_PUBLIC_SIGNAL"})
+        n_lic_tuc = self.add_node(KGNodeType.LICENSE, "LIC:SEAGEN_PFIZER", "Pfizer / Seagen Acquisition Rights", "Commercialized under Seagen / Pfizer worldwide license", {"status": "PARTNERED"})
         n_lic_pozi = self.add_node(KGNodeType.LICENSE, "LIC:HANMI_REVERSION", "Hanmi Poziotinib Reversion", "Rights reverted to Hanmi; available for out-licensing", {"status": "AVAILABLE"})
         n_reg_tuc_appr = self.add_node(KGNodeType.REGULATORY_EVENT, "REG:TUC_FDA_APPR", "FDA Approval of Tukysa (NDA 213051)", "Full approval under Project Orbis in HER2+ mBC", {"authority": "FDA", "date": "2020-04-17"})
         n_reg_zong_btd = self.add_node(KGNodeType.REGULATORY_EVENT, "REG:ZONG_BTD", "FDA Breakthrough Therapy for Zongertinib", "BTD granted in pretreated HER2 TKD-mutant NSCLC", {"authority": "FDA", "date": "2024-04-18"})
+        n_reg_pozi_crl = self.add_node(KGNodeType.REGULATORY_EVENT, "REG:POZI_FDA_CRL", "FDA Complete Response Letter for Poziotinib", "CRL issued following ODAC 9-4 vote citing marginal benefit-risk", {"authority": "FDA", "date": "2022-11-24"})
 
         # ==============================================================================
         # Asset 1: Zongertinib (BI 1810631)
@@ -726,6 +859,7 @@ class OncologyKnowledgeGraphEngine:
         self.add_edge(n_asset_zong.id, KGRelationshipType.ACQUIRES_RESISTANCE, n_res_er.id, 0.95, {}, ev_zong_nat)
         self.add_edge(n_asset_zong.id, KGRelationshipType.OVERCOMES_RESISTANCE_VIA, n_comb_fulvestrant.id, 0.95, {}, ev_zong_nat)
         self.add_edge(n_asset_zong.id, KGRelationshipType.COVERED_BY_PATENT, n_pat_zong.id, 1.0, {}, ev_zong_nat)
+        self.add_edge(n_asset_zong.id, KGRelationshipType.SUBJECT_TO_LICENSE, n_lic_zong.id, 1.0, {}, ev_zong_nat)
         self.add_edge(n_asset_zong.id, KGRelationshipType.GOVERNED_BY_REGULATORY_EVENT, n_reg_zong_btd.id, 1.0, {}, ev_zong_nat)
 
         # ==============================================================================
@@ -758,6 +892,7 @@ class OncologyKnowledgeGraphEngine:
 
         self.add_edge(n_asset_tuc.id, KGRelationshipType.TARGETS, n_her2_target.id, 1.0, {"potency_ic50_nm": 6.9}, ev_tuc)
         self.add_edge(n_asset_tuc.id, KGRelationshipType.INVOLVES_GENE, n_erbb2_gene.id, 1.0, {}, ev_tuc)
+        self.add_edge(n_asset_tuc.id, KGRelationshipType.HARBORS_MUTATION, n_mut_l755s.id, 0.95, {}, ev_tuc)
         self.add_edge(n_asset_tuc.id, KGRelationshipType.MODULATES_PATHWAY, n_path_rtk.id, 1.0, {}, ev_tuc)
         self.add_edge(n_asset_tuc.id, KGRelationshipType.TREATS_DISEASE, n_dis_breast.id, 1.0, {}, ev_tuc)
         self.add_edge(n_asset_tuc.id, KGRelationshipType.TREATS_DISEASE, n_dis_crc.id, 1.0, {}, ev_tuc)
@@ -767,8 +902,10 @@ class OncologyKnowledgeGraphEngine:
         self.add_edge(n_asset_tuc.id, KGRelationshipType.EVALUATED_IN_TRIAL, n_trial_her2climb.id, 1.0, {"phase": "Phase 2/Phase 3"}, ev_tuc)
         self.add_edge(n_asset_tuc.id, KGRelationshipType.REPORTED_IN_PUB, n_pub_nejm.id, 1.0, {}, ev_tuc)
         self.add_edge(n_asset_tuc.id, KGRelationshipType.DEVELOPED_BY_COMPANY, n_comp_pfizer.id, 1.0, {}, ev_tuc)
+        self.add_edge(n_asset_tuc.id, KGRelationshipType.ACQUIRES_RESISTANCE, n_res_c805s.id, 0.90, {}, ev_tuc)
         self.add_edge(n_asset_tuc.id, KGRelationshipType.OVERCOMES_RESISTANCE_VIA, n_comb_her2climb.id, 1.0, {}, ev_tuc)
         self.add_edge(n_asset_tuc.id, KGRelationshipType.COVERED_BY_PATENT, n_pat_tuc.id, 1.0, {}, ev_tuc)
+        self.add_edge(n_asset_tuc.id, KGRelationshipType.SUBJECT_TO_LICENSE, n_lic_tuc.id, 1.0, {}, ev_tuc)
         self.add_edge(n_asset_tuc.id, KGRelationshipType.GOVERNED_BY_REGULATORY_EVENT, n_reg_tuc_appr.id, 1.0, {}, ev_tuc)
 
         # ==============================================================================
@@ -799,14 +936,21 @@ class OncologyKnowledgeGraphEngine:
 
         self.add_edge(n_asset_pozi.id, KGRelationshipType.TARGETS, n_her2_target.id, 1.0, {}, ev_pozi)
         self.add_edge(n_asset_pozi.id, KGRelationshipType.TARGETS, n_egfr_target.id, 1.0, {"potent_egfr": True}, ev_pozi)
+        self.add_edge(n_asset_pozi.id, KGRelationshipType.INVOLVES_GENE, n_erbb2_gene.id, 1.0, {}, ev_pozi)
         self.add_edge(n_asset_pozi.id, KGRelationshipType.HARBORS_MUTATION, n_mut_ex20.id, 1.0, {}, ev_pozi)
+        self.add_edge(n_asset_pozi.id, KGRelationshipType.MODULATES_PATHWAY, n_path_rtk.id, 1.0, {}, ev_pozi)
         self.add_edge(n_asset_pozi.id, KGRelationshipType.TREATS_DISEASE, n_dis_nsclc.id, 1.0, {}, ev_pozi)
         self.add_edge(n_asset_pozi.id, KGRelationshipType.INDICATED_FOR, n_ind_her2_nsclc.id, 1.0, {}, ev_pozi)
         self.add_edge(n_asset_pozi.id, KGRelationshipType.STRATIFIED_BY_BIOMARKER, n_bio_ex20.id, 1.0, {}, ev_pozi)
         self.add_edge(n_asset_pozi.id, KGRelationshipType.ENROLLS_POPULATION, n_pop_her2_nsclc.id, 1.0, {}, ev_pozi)
         self.add_edge(n_asset_pozi.id, KGRelationshipType.EVALUATED_IN_TRIAL, n_trial_zenith20.id, 1.0, {"phase": "Phase 2"}, ev_pozi)
+        self.add_edge(n_asset_pozi.id, KGRelationshipType.REPORTED_IN_PUB, n_pub_nature.id, 0.90, {}, ev_pozi)
         self.add_edge(n_asset_pozi.id, KGRelationshipType.DEVELOPED_BY_COMPANY, n_comp_hanmi.id, 1.0, {}, ev_pozi)
+        self.add_edge(n_asset_pozi.id, KGRelationshipType.ORIGINATED_AT_INSTITUTION, n_inst_mdanderson.id, 1.0, {}, ev_pozi)
+        self.add_edge(n_asset_pozi.id, KGRelationshipType.ACQUIRES_RESISTANCE, n_res_c805s.id, 0.90, {}, ev_pozi)
+        self.add_edge(n_asset_pozi.id, KGRelationshipType.COVERED_BY_PATENT, n_pat_pozi.id, 1.0, {}, ev_pozi)
         self.add_edge(n_asset_pozi.id, KGRelationshipType.SUBJECT_TO_LICENSE, n_lic_pozi.id, 1.0, {}, ev_pozi)
+        self.add_edge(n_asset_pozi.id, KGRelationshipType.GOVERNED_BY_REGULATORY_EVENT, n_reg_pozi_crl.id, 1.0, {}, ev_pozi)
 
         # ==============================================================================
         # Asset 4: Neratinib

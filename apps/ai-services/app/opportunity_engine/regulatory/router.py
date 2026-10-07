@@ -6,8 +6,10 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, status
 
+from pydantic import BaseModel
 from .models import (
     RegulatoryEventRecord,
+    RegulatoryEventType,
     UnverifiedMarketingClaimError,
 )
 from .service import RegulatoryIntelligenceService
@@ -20,6 +22,17 @@ _regulatory_service = RegulatoryIntelligenceService()
 
 def get_regulatory_service() -> RegulatoryIntelligenceService:
     return _regulatory_service
+
+
+class BatchRegulatoryIngestRequest(BaseModel):
+    events: List[RegulatoryEventRecord]
+    strict: bool = False
+
+
+class BatchRegulatoryIngestResponse(BaseModel):
+    total_submitted: int
+    total_ingested: int
+    events: List[RegulatoryEventRecord]
 
 
 @router.get("/assets/{asset_id}/timeline", response_model=List[RegulatoryEventRecord])
@@ -75,3 +88,41 @@ def record_regulatory_event(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=str(e),
         )
+
+
+@router.post("/events/batch", response_model=BatchRegulatoryIngestResponse)
+def batch_record_regulatory_events(
+    req: BatchRegulatoryIngestRequest,
+) -> BatchRegulatoryIngestResponse:
+    """
+    Batch records and validates regulatory events.
+    Enforces required provenance and dates on every event.
+    """
+    service = get_regulatory_service()
+    try:
+        ingested = service.batch_record_events(req.events, strict=req.strict)
+        return BatchRegulatoryIngestResponse(
+            total_submitted=len(req.events),
+            total_ingested=len(ingested),
+            events=ingested,
+        )
+    except UnverifiedMarketingClaimError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(e),
+        )
+
+
+@router.get("/events/type/{event_type}", response_model=List[RegulatoryEventRecord])
+def get_regulatory_events_by_type(
+    event_type: RegulatoryEventType,
+    cutoff_date: Optional[date] = Query(None, description="Optional temporal cutoff date to prevent leakage"),
+) -> List[RegulatoryEventRecord]:
+    """
+    Retrieves all regulatory events of a specified event type (e.g. FAST_TRACK,
+    BREAKTHROUGH_THERAPY, ORPHAN_DRUG, ACCELERATED_APPROVAL, FULL_APPROVAL,
+    COMPLETE_RESPONSE_LETTER, WITHDRAWAL, SAFETY_WARNING, LABEL_CHANGE).
+    """
+    service = get_regulatory_service()
+    return service.get_events_by_type(event_type=event_type, cutoff_date=cutoff_date)
+
