@@ -1,9 +1,15 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from datetime import date, datetime, timezone
+from typing import Any, Dict, List
 from uuid import uuid4
+
+from app.opportunity_engine.intelligence_47_49 import (
+    DatedResistanceObservation,
+    ResistanceIntelligence,
+    synthesize_resistance,
+)
 
 from .models import (
     RESISTANCE_INTELLIGENCE_DISCLAIMER,
@@ -55,6 +61,32 @@ class ResistanceIntelligenceEngine:
 
     def __init__(self) -> None:
         self._profiles = self._build_canonical_resistance_profiles()
+
+    def evaluate_intelligence(
+        self,
+        asset_id: str,
+        prediction_cutoff: date,
+        *,
+        tenant_id: str | None = None,
+        custom_observations: list[DatedResistanceObservation] | None = None,
+        knowledge_graph: Any | None = None,
+        feature_store: Any | None = None,
+        model_registry: Any | None = None,
+    ) -> ResistanceIntelligence:
+        canonical = self._profiles.get(asset_id.casefold())
+        return synthesize_resistance(
+            asset_id=asset_id,
+            asset_name=canonical.asset_name if canonical else asset_id.capitalize(),
+            prediction_cutoff=prediction_cutoff,
+            tenant_id=tenant_id,
+            observations=custom_observations or [],
+            knowledge_graph=knowledge_graph,
+            feature_store=feature_store,
+            model_registry=model_registry,
+            undated_canonical_mechanisms=(
+                canonical.top_escape_mechanisms if canonical else []
+            ),
+        )
 
     def get_asset_resistance_profile(self, asset_id: str) -> ResistanceRiskProfile:
         """

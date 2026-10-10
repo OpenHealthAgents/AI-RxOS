@@ -6,9 +6,9 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 from uuid import UUID, uuid4
 
 from .models import (
-    AssetOpportunityGraph,
     CANONICAL_ONCOLOGY_RELATIONSHIPS,
     CANONICAL_RELATIONSHIP_CATEGORY_MAP,
+    AssetOpportunityGraph,
     EdgeEvidenceProvenance,
     GraphNodeSummary,
     GraphPathMatch,
@@ -109,6 +109,10 @@ class OncologyKnowledgeGraphEngine:
 
     def get_node(self, node_id: UUID) -> Optional[KGNode]:
         return self._nodes.get(node_id)
+
+    def get_node_by_external_id(self, external_id: str) -> Optional[KGNode]:
+        """Resolve a canonical node by its external identifier."""
+        return self._nodes_by_external_id.get(external_id)
 
     def get_outgoing_edges(self, node_id: UUID, rel_type: Optional[KGRelationshipType] = None) -> List[KGEdge]:
         edges = self._outgoing_edges.get(node_id, [])

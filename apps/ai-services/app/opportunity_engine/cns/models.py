@@ -7,6 +7,10 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.opportunity_engine.intelligence import (
+    IntelligenceProfileBase,
+    IntelligenceValue,
+)
 
 # ==============================================================================
 # 1. Enums: Evidence Levels, Species & Parameters
@@ -61,6 +65,7 @@ class RawCNSObservation(BaseModel):
 
     id: UUID = Field(default_factory=uuid4)
     asset_id: str
+    tenant_id: Optional[str] = None
     parameter_type: CNSParameterType
     evidence_level: CNSEvidenceLevel
     species: CNSSpecies
@@ -168,3 +173,14 @@ class EvaluateAssetCNSRequest(BaseModel):
 
 class EvaluateAssetCNSResponse(BaseModel):
     profile: CNSIntelligenceProfile
+
+
+class CNSIntelligence(IntelligenceProfileBase):
+    """Cutoff-aware CNS synthesis; measured exposure/activity never imply each other."""
+
+    cns_exposure: IntelligenceValue
+    predicted_cns_potential: IntelligenceValue
+    cns_activity: IntelligenceValue
+    predicted_cns_activity: IntelligenceValue
+    brain_metastasis_relevance: IntelligenceValue
+    confidence: IntelligenceValue

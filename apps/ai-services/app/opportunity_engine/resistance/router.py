@@ -1,7 +1,12 @@
 from __future__ import annotations
 
+from datetime import date
 from typing import List
-from fastapi import APIRouter, HTTPException, Query, status
+
+from fastapi import APIRouter, Query
+
+from app.opportunity_engine.intelligence_47_49 import ResistanceIntelligence
+from app.opportunity_engine.kg.engine import OncologyKnowledgeGraphEngine
 
 from .engine import ResistanceIntelligenceEngine
 from .models import (
@@ -14,10 +19,30 @@ from .models import (
 router = APIRouter(prefix="/api/v1/resistance", tags=["Resistance Intelligence Engine"])
 
 _engine = ResistanceIntelligenceEngine()
+_knowledge_graph = OncologyKnowledgeGraphEngine()
 
 
 def get_resistance_engine() -> ResistanceIntelligenceEngine:
     return _engine
+
+
+@router.get("/intelligence/{asset_id}", response_model=ResistanceIntelligence)
+def get_asset_resistance_intelligence(
+    asset_id: str,
+    prediction_cutoff: date | None = Query(default=None),
+    tenant_id: str | None = Query(default=None),
+) -> ResistanceIntelligence:
+    from app.ml.router import get_shared_ml_services
+
+    feature_store, model_registry = get_shared_ml_services()
+    return get_resistance_engine().evaluate_intelligence(
+        asset_id,
+        prediction_cutoff or date.today(),
+        tenant_id=tenant_id,
+        knowledge_graph=_knowledge_graph,
+        feature_store=feature_store,
+        model_registry=model_registry,
+    )
 
 
 @router.get("/benchmarks", response_model=List[ResistanceRiskProfile])

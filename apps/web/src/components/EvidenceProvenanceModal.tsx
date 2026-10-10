@@ -17,11 +17,14 @@ export function EvidenceProvenanceModal({
   asset2,
 }: EvidenceProvenanceModalProps) {
   const [selectedAssetId, setSelectedAssetId] = useState<string>(asset1.id);
-  const [activeTab, setActiveTab] = useState<"supporting" | "contradicting" | "unknowns" | "lineage" | "inferences">("supporting");
+  const [activeTab, setActiveTab] = useState<
+    "supporting" | "contradicting" | "unknowns" | "lineage" | "inferences"
+  >("supporting");
 
   if (!isOpen) return null;
 
-  const currentAsset = selectedAssetId === asset1.id ? asset1 : (asset2 ?? asset1);
+  const currentAsset =
+    selectedAssetId === asset1.id ? asset1 : (asset2 ?? asset1);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 overflow-y-auto">
@@ -30,8 +33,18 @@ export function EvidenceProvenanceModal({
         <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-6 py-4">
           <div className="flex items-center gap-3">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-white">
-              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+              <svg
+                className="h-5 w-5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
+                />
               </svg>
             </div>
             <div>
@@ -39,7 +52,8 @@ export function EvidenceProvenanceModal({
                 Evidence Provenance & Model Lineage Dossier
               </h2>
               <p className="text-xs text-slate-500">
-                Auditable citations, contradictory observations, explicit unknowns, and calculation lineage
+                Auditable citations, contradictory observations, explicit
+                unknowns, and calculation lineage
               </p>
             </div>
           </div>
@@ -48,8 +62,18 @@ export function EvidenceProvenanceModal({
             onClick={onClose}
             className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700"
           >
-            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+            <svg
+              className="h-5 w-5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                d="M6 18L18 6M6 6l12 12"
+              />
             </svg>
           </button>
         </div>
@@ -57,7 +81,9 @@ export function EvidenceProvenanceModal({
         {/* Asset Selector Toggle */}
         <div className="flex items-center justify-between border-b border-slate-200 bg-white px-6 py-2.5">
           <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold text-slate-600">Select Asset:</span>
+            <span className="text-xs font-semibold text-slate-600">
+              Select Asset:
+            </span>
             <button
               onClick={() => setSelectedAssetId(asset1.id)}
               className={`rounded-md px-3 py-1 text-xs font-semibold transition-colors ${
@@ -86,7 +112,9 @@ export function EvidenceProvenanceModal({
             <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-medium text-emerald-800">
               ✓ Verified Lineage
             </span>
-            <span className="text-xs text-slate-500">As of: {currentAsset.last_updated}</span>
+            <span className="text-xs text-slate-500">
+              As of: {currentAsset.last_updated}
+            </span>
           </div>
         </div>
 
@@ -110,7 +138,8 @@ export function EvidenceProvenanceModal({
                 : "border-transparent text-slate-600 hover:text-slate-900"
             }`}
           >
-            Contradicting Evidence ({currentAsset.contradicting_evidence.length})
+            Contradicting Evidence ({currentAsset.contradicting_evidence.length}
+            )
           </button>
           <button
             onClick={() => setActiveTab("unknowns")}
@@ -174,8 +203,18 @@ export function EvidenceProvenanceModal({
                             className="text-xs text-blue-600 hover:underline inline-flex items-center gap-0.5"
                           >
                             <span>Open</span>
-                            <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                            <svg
+                              className="h-3 w-3"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth="2"
+                                d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+                              />
                             </svg>
                           </a>
                         )}
@@ -185,10 +224,14 @@ export function EvidenceProvenanceModal({
                       </span>
                     </div>
 
-                    <h4 className="text-sm font-semibold text-slate-800 mb-1">{ev.title}</h4>
-                    <p className="text-xs text-slate-500 italic mb-2">{ev.citation}</p>
+                    <h4 className="text-sm font-semibold text-slate-800 mb-1">
+                      {ev.title}
+                    </h4>
+                    <p className="text-xs text-slate-500 italic mb-2">
+                      {ev.citation}
+                    </p>
                     <div className="rounded bg-slate-50 p-2.5 text-xs text-slate-700 border-l-2 border-emerald-500 font-mono">
-                      "{ev.excerpt}"
+                      &quot;{ev.excerpt}&quot;
                     </div>
                   </div>
                 ))
@@ -200,7 +243,8 @@ export function EvidenceProvenanceModal({
             <div className="space-y-3">
               {currentAsset.contradicting_evidence.length === 0 ? (
                 <div className="rounded-lg bg-emerald-50 p-6 text-center text-sm text-emerald-800">
-                  No verified contradicting safety or efficacy signals currently recorded for {currentAsset.name}.
+                  No verified contradicting safety or efficacy signals currently
+                  recorded for {currentAsset.name}.
                 </div>
               ) : (
                 currentAsset.contradicting_evidence.map((ev) => (
@@ -222,10 +266,14 @@ export function EvidenceProvenanceModal({
                       </span>
                     </div>
 
-                    <h4 className="text-sm font-semibold text-slate-800 mb-1">{ev.title}</h4>
-                    <p className="text-xs text-slate-500 italic mb-2">{ev.citation}</p>
+                    <h4 className="text-sm font-semibold text-slate-800 mb-1">
+                      {ev.title}
+                    </h4>
+                    <p className="text-xs text-slate-500 italic mb-2">
+                      {ev.citation}
+                    </p>
                     <div className="rounded bg-white p-2.5 text-xs text-rose-900 border-l-2 border-rose-500 font-mono">
-                      "{ev.excerpt}"
+                      &quot;{ev.excerpt}&quot;
                     </div>
                   </div>
                 ))
@@ -249,16 +297,22 @@ export function EvidenceProvenanceModal({
                       <span className="rounded bg-purple-100 px-2.5 py-0.5 text-[10px] font-bold text-purple-800 uppercase">
                         {u.category}
                       </span>
-                      <span className="text-[11px] font-mono text-purple-700">{u.id}</span>
+                      <span className="text-[11px] font-mono text-purple-700">
+                        {u.id}
+                      </span>
                     </div>
                     <h4 className="text-xs font-bold text-slate-900 mb-1">
                       ❓ {u.question}
                     </h4>
                     <div className="text-xs text-slate-600 mb-2">
-                      <strong className="text-slate-700">Current Knowledge Gap:</strong> {u.current_gap}
+                      <strong className="text-slate-700">
+                        Current Knowledge Gap:
+                      </strong>{" "}
+                      {u.current_gap}
                     </div>
                     <div className="rounded bg-white p-2 text-xs text-purple-900 border border-purple-100 font-medium">
-                      🧪 <strong>Recommended Translational Study:</strong> {u.suggested_study}
+                      🧪 <strong>Recommended Translational Study:</strong>{" "}
+                      {u.suggested_study}
                     </div>
                   </div>
                 ))
@@ -273,19 +327,48 @@ export function EvidenceProvenanceModal({
                   Development Potential Score Lineage (DPS)
                 </h4>
                 <div className="font-mono bg-white p-3 rounded border border-slate-200 text-slate-800 mb-3">
-                  DPS = 0.20*Selectivity + 0.15*Potency + 0.20*SafetyTI + 0.15*CNSPotential + 0.15*Biomarker + 0.15*Readiness - SafetyPenalty
+                  DPS = 0.20*Selectivity + 0.15*Potency + 0.20*SafetyTI +
+                  0.15*CNSPotential + 0.15*Biomarker + 0.15*Readiness -
+                  SafetyPenalty
                 </div>
                 <div className="grid grid-cols-2 gap-3 text-slate-700">
-                  <div>• Target Selectivity: {currentAsset.biology_profile.target_selectivity} (weight 0.20)</div>
-                  <div>• Potency: {currentAsset.biology_profile.potency} (weight 0.15)</div>
-                  <div>• Safety/Therapeutic Index: {currentAsset.biology_profile.safety_ti} (weight 0.20)</div>
-                  <div>• CNS Penetration: {currentAsset.biology_profile.cns_potential} (weight 0.15)</div>
-                  <div>• Biomarker Strategy: {currentAsset.biology_profile.biomarker_strategy} (weight 0.15)</div>
-                  <div>• Clinical Readiness: {currentAsset.biology_profile.clinical_readiness} (weight 0.15)</div>
+                  <div>
+                    • Target Selectivity:{" "}
+                    {currentAsset.biology_profile.target_selectivity} (weight
+                    0.20)
+                  </div>
+                  <div>
+                    • Potency: {currentAsset.biology_profile.potency} (weight
+                    0.15)
+                  </div>
+                  <div>
+                    • Safety/Therapeutic Index:{" "}
+                    {currentAsset.biology_profile.safety_ti} (weight 0.20)
+                  </div>
+                  <div>
+                    • CNS Penetration:{" "}
+                    {currentAsset.biology_profile.cns_potential} (weight 0.15)
+                  </div>
+                  <div>
+                    • Biomarker Strategy:{" "}
+                    {currentAsset.biology_profile.biomarker_strategy} (weight
+                    0.15)
+                  </div>
+                  <div>
+                    • Clinical Readiness:{" "}
+                    {currentAsset.biology_profile.clinical_readiness} (weight
+                    0.15)
+                  </div>
                 </div>
                 <div className="mt-3 pt-3 border-t border-slate-200 flex justify-between font-bold text-sm">
-                  <span>Computed Score: {currentAsset.recommendation.development_potential_score}%</span>
-                  <span className="text-emerald-700">Tier: {currentAsset.recommendation.development_potential_tier}</span>
+                  <span>
+                    Computed Score:{" "}
+                    {currentAsset.recommendation.development_potential_score}%
+                  </span>
+                  <span className="text-emerald-700">
+                    Tier:{" "}
+                    {currentAsset.recommendation.development_potential_tier}
+                  </span>
                 </div>
               </div>
 
@@ -294,13 +377,39 @@ export function EvidenceProvenanceModal({
                   Stage Transition Probability Engine (Model v0.1)
                 </h4>
                 <p className="text-slate-600 mb-2">
-                  Calibrated Bayesian transition probabilities conditioned on oncology benchmark historical cohorts:
+                  Calibrated Bayesian transition probabilities conditioned on
+                  oncology benchmark historical cohorts:
                 </p>
                 <div className="grid grid-cols-2 gap-2 text-slate-700 font-mono">
-                  <div>Preclinical → IND: {Math.round(currentAsset.stage_transitions.preclinical_to_ind * 100)}%</div>
-                  <div>Phase I → II: {Math.round(currentAsset.stage_transitions.phase_i_to_ii * 100)}%</div>
-                  <div>Phase II → III: {Math.round(currentAsset.stage_transitions.phase_ii_to_iii * 100)}%</div>
-                  <div>Phase III → Approval: {Math.round(currentAsset.stage_transitions.phase_iii_to_approval * 100)}%</div>
+                  <div>
+                    Preclinical → IND:{" "}
+                    {Math.round(
+                      currentAsset.stage_transitions.preclinical_to_ind * 100,
+                    )}
+                    %
+                  </div>
+                  <div>
+                    Phase I → II:{" "}
+                    {Math.round(
+                      currentAsset.stage_transitions.phase_i_to_ii * 100,
+                    )}
+                    %
+                  </div>
+                  <div>
+                    Phase II → III:{" "}
+                    {Math.round(
+                      currentAsset.stage_transitions.phase_ii_to_iii * 100,
+                    )}
+                    %
+                  </div>
+                  <div>
+                    Phase III → Approval:{" "}
+                    {Math.round(
+                      currentAsset.stage_transitions.phase_iii_to_approval *
+                        100,
+                    )}
+                    %
+                  </div>
                 </div>
               </div>
             </div>
@@ -309,7 +418,10 @@ export function EvidenceProvenanceModal({
           {activeTab === "inferences" && (
             <div className="space-y-3">
               <div className="rounded-md bg-amber-50 p-3 text-xs text-amber-800 border border-amber-200 mb-3">
-                ⚠️ <strong>Explicit AI Inference Disclosure:</strong> The items below are computational hypotheses, molecular descriptors, and heuristic extrapolations. They are not direct wet-lab measurements.
+                ⚠️ <strong>Explicit AI Inference Disclosure:</strong> The items
+                below are computational hypotheses, molecular descriptors, and
+                heuristic extrapolations. They are not direct wet-lab
+                measurements.
               </div>
               {currentAsset.ai_inferences.map((inf, idx) => (
                 <div
@@ -329,7 +441,9 @@ export function EvidenceProvenanceModal({
         {/* Modal Footer with Mandatory Disclaimers */}
         <div className="border-t border-slate-200 bg-slate-50 px-6 py-3 flex flex-col md:flex-row items-center justify-between gap-3 text-[11px] text-slate-500">
           <div className="italic">
-            ⚖️ <strong>Legal & Scientific Notice:</strong> IP/FTO indications are not legal advice. Human experts remain responsible for all translational, clinical, and investment decisions.
+            ⚖️ <strong>Legal & Scientific Notice:</strong> IP/FTO indications
+            are not legal advice. Human experts remain responsible for all
+            translational, clinical, and investment decisions.
           </div>
           <button
             onClick={onClose}

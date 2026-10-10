@@ -34,7 +34,7 @@ export function RadarChart({
   // Compute (x, y) coordinates for an angle and normalized value (0 - 100)
   const getCoordinates = (index: number, value: number) => {
     // Angle in radians, starting at top (-pi/2)
-    const angle = (Math.PI * 2 / totalAxes) * index - Math.PI / 2;
+    const angle = ((Math.PI * 2) / totalAxes) * index - Math.PI / 2;
     const r = (value / 100) * radius;
     const x = center + r * Math.cos(angle);
     const y = center + r * Math.sin(angle);
@@ -47,7 +47,7 @@ export function RadarChart({
   // Polygon points for asset 1
   const points1 = axes
     .map((axis, i) => {
-      const val = (asset1Metrics as any)[axis.key] ?? 50;
+      const val = asset1Metrics[axis.key] ?? 50;
       const { x, y } = getCoordinates(i, val);
       return `${x},${y}`;
     })
@@ -56,7 +56,7 @@ export function RadarChart({
   // Polygon points for asset 2
   const points2 = axes
     .map((axis, i) => {
-      const val = (asset2Metrics as any)[axis.key] ?? 50;
+      const val = asset2Metrics[axis.key] ?? 50;
       const { x, y } = getCoordinates(i, val);
       return `${x},${y}`;
     })
@@ -119,7 +119,7 @@ export function RadarChart({
 
         {/* Asset 1 markers */}
         {axes.map((axis, i) => {
-          const val = (asset1Metrics as any)[axis.key] ?? 50;
+          const val = asset1Metrics[axis.key] ?? 50;
           const { x, y } = getCoordinates(i, val);
           return (
             <circle
@@ -136,7 +136,7 @@ export function RadarChart({
 
         {/* Asset 2 markers */}
         {axes.map((axis, i) => {
-          const val = (asset2Metrics as any)[axis.key] ?? 50;
+          const val = asset2Metrics[axis.key] ?? 50;
           const { x, y } = getCoordinates(i, val);
           return (
             <circle

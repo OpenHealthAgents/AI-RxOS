@@ -1,278 +1,605 @@
 "use client";
 
 import React, { useState } from "react";
-import { AssetIntelligence } from "../lib/types";
+import { requestJson } from "../lib/api-client";
 
-export interface PatientMatchViewProps {
-  assets: AssetIntelligence[];
+interface CohortQuery {
+  disease_subtype: string;
+  mutation: string | null;
+  expression: string | null;
+  amplification: string | null;
+  protein_expression: string | null;
+  biomarker: string | null;
+  prior_therapy: string[];
+  resistance_state: string | null;
+  line_of_therapy: string | null;
+  cns_status: string | null;
 }
 
-export function PatientMatchView({ assets }: PatientMatchViewProps) {
-  const [selectedMutation, setSelectedMutation] = useState<string>("HER2_MUTANT_L755S");
-  const [hormoneStatus, setHormoneStatus] = useState<string>("ER_POS_NON_AMP");
-  const [hasCnsMets, setHasCnsMets] = useState<boolean>(true);
-  const [priorTherapy, setPriorTherapy] = useState<string>("POST_CDK46");
+interface RankedCandidate {
+  asset_id: string;
+  asset_name: string;
+  match_score: number;
+  rank: number;
+  population_fit: string;
+  mechanistic_synergy: string;
+  evidence_citations: string[];
+  contradictory_evidence?: unknown[];
+  unknowns?: string[];
+}
 
-  const calculateMatches = () => {
-    return assets.map((asset) => {
-      let score = 50;
-      const reasons: string[] = [];
-      let combo = "";
-      const resistanceRisks: string[] = [];
-      let cnsBenefit = false;
+interface IntelligenceValue {
+  name?: string;
+  value?: unknown;
+  status?: string;
+  epistemic_class?: string;
+  confidence?: number | null;
+  supporting_evidence?: unknown[];
+  provenance?: Record<string, unknown>;
+  reason?: string | null;
+}
 
-      if (asset.id === "zongertinib") {
-        if (selectedMutation === "HER2_MUTANT_L755S" || selectedMutation === "HER2_EXON_20") {
-          score += 35;
-          reasons.push("Potent selective inhibition against HER2 kinase mutations (L755S/V777L/exon 20).");
-        }
-        if (hasCnsMets) {
-          score += 15;
-          reasons.push("Blood-brain barrier penetration provides intracranial response.");
-          cnsBenefit = true;
-        }
-        if (hormoneStatus === "ER_POS_NON_AMP") {
-          combo = "+ Endocrine therapy (e.g., fulvestrant)";
-          resistanceRisks.push("ER pathway compensatory reactivation requires concurrent endocrine suppression.");
-        }
-      } else if (asset.id === "neratinib") {
-        if (selectedMutation === "HER2_AMP") {
-          score += 30;
-          reasons.push("Clinically validated in amplified disease (ExteNET).");
-        } else {
-          score -= 15;
-          reasons.push("Lower mutant selectivity; wild-type EGFR-driven diarrhea limits dose intensity.");
-        }
-        if (hasCnsMets) {
-          score += 5;
-          cnsBenefit = false;
-        }
-        combo = "+ Capecitabine";
-        resistanceRisks.push("High incidence of treatment-limiting diarrhea; HER2 reactivation.");
-      } else if (asset.id === "tucatinib") {
-        if (hasCnsMets) {
-          score += 35;
-          reasons.push("Clinically established intracranial OS advantage (HER2CLIMB).");
-          cnsBenefit = true;
-        }
-        if (selectedMutation === "HER2_AMP") {
-          score += 15;
-        }
-        combo = "+ Trastuzumab + Capecitabine";
-      } else {
-        score = 15;
-        reasons.push("Narrow therapeutic window with severe off-target EGFR toxicities.");
-      }
-
-      return {
-        asset,
-        matchScore: Math.max(0, Math.min(100, score)),
-        reasons,
-        recommendedCombination: combo || "+ Trastuzumab",
-        resistanceRisks,
-        cnsBenefit,
-      };
-    }).sort((a, b) => b.matchScore - a.matchScore);
+interface PatientIntelligence {
+  status?: string;
+  data?: {
+    primary_population?: IntelligenceValue;
+    secondary_population?: IntelligenceValue;
+    low_likelihood_population?: IntelligenceValue;
+    biomarker_strategy?: IntelligenceValue;
+    patient_match_score?: IntelligenceValue;
+    confidence?: IntelligenceValue;
+    evidence?: unknown[];
+    unknowns?: string[];
+    contradictory_evidence?: unknown[];
+    ml_component?: {
+      available?: boolean;
+      model_name?: string;
+      model_version?: string | null;
+      feature_version?: string | null;
+      reason?: string | null;
+    };
+    epistemic_classes?: string[];
   };
+  reason?: string | null;
+}
 
-  const matches = calculateMatches();
+interface ScenarioResponse {
+  query: CohortQuery;
+  best_matched_asset: Record<string, unknown>;
+  ranked_candidates: RankedCandidate[];
+  interpretation: string;
+  disclaimer: string;
+  evaluated_at: string;
+}
 
-  return (
-    <div className="flex-1 overflow-y-auto bg-[#f8fafc] px-6 py-4 text-slate-800">
-      <div className="border-b border-slate-200 pb-3">
-        <h1 className="text-xl font-bold tracking-tight text-slate-900">
-          Precision Patient Stratification & Biomarker Match
-        </h1>
-        <p className="text-xs text-slate-500 mt-0.5">
-          Stratify patient genomic alterations, line of therapy, and intracranial involvement to identify optimal asset candidates
+const FILTERS = [
+  ["disease_subtype", "Disease / subtype"],
+  ["mutation", "Mutation"],
+  ["biomarker", "Biomarker"],
+  ["expression", "Expression"],
+  ["amplification", "Amplification"],
+  ["protein_expression", "Protein expression"],
+  ["prior_therapy", "Prior treatment(s), comma-separated"],
+  ["line_of_therapy", "Line of therapy"],
+  ["resistance_state", "Resistance state"],
+  ["cns_status", "CNS status"],
+] as const;
+
+type FilterName = (typeof FILTERS)[number][0];
+type FilterValues = Record<FilterName, string>;
+
+const EMPTY_FILTERS: FilterValues = {
+  disease_subtype: "",
+  mutation: "",
+  biomarker: "",
+  expression: "",
+  amplification: "",
+  protein_expression: "",
+  prior_therapy: "",
+  line_of_therapy: "",
+  resistance_state: "",
+  cns_status: "",
+};
+
+function display(value: unknown): string {
+  if (value === null || value === undefined || value === "") return "UNKNOWN";
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
+}
+
+function confidenceDisplay(value: unknown): string {
+  return typeof value === "number" && Number.isFinite(value)
+    ? `${Math.round(value * 100)}%`
+    : "UNKNOWN";
+}
+
+function evidenceReferences(values: unknown[] | undefined): string[] {
+  if (!values?.length) return [];
+  return values.map((item) => {
+    if (typeof item === "string") return item;
+    if (!item || typeof item !== "object") return display(item);
+    const record = item as Record<string, unknown>;
+    return display(
+      record.citation ?? record.source_reference ?? record.evidence_id ?? item,
+    );
+  });
+}
+
+function epistemicLabel(value: unknown): string {
+  const labels: Record<string, string> = {
+    FACT: "OBSERVED (API: FACT)",
+    DERIVED_FEATURE: "DERIVED (API: DERIVED_FEATURE)",
+    ML_PREDICTION: "PREDICTED (API: ML_PREDICTION)",
+    AI_INFERENCE: "INFERRED (API: AI_INFERENCE)",
+    HYPOTHESIS: "HYPOTHESIS",
+    UNKNOWN: "UNKNOWN",
+  };
+  return typeof value === "string" ? (labels[value] ?? value) : "UNKNOWN";
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "The request failed.";
+}
+
+function IntelligenceDetail({
+  label,
+  value,
+}: {
+  label: string;
+  value: IntelligenceValue | undefined;
+}) {
+  if (!value) {
+    return (
+      <div>
+        <p>
+          <strong>{label} state:</strong> UNKNOWN / NOT RETURNED
         </p>
       </div>
+    );
+  }
+  const confidence = confidenceDisplay(value.confidence);
+  const evidence = evidenceReferences(value.supporting_evidence);
+  const hasEvidenceMetadata = value.supporting_evidence?.some(
+    (item) => item !== null && typeof item === "object",
+  );
+  return (
+    <div>
+      <p>
+        <strong>{label} state:</strong> {value.status ?? "UNKNOWN"} ·{" "}
+        {epistemicLabel(value.epistemic_class)}
+      </p>
+      <p>
+        <strong>{label}:</strong> {display(value.value)}
+      </p>
+      <p>
+        <strong>{label} confidence:</strong> {confidence}
+      </p>
+      {value.reason && (
+        <p>
+          <strong>{label} reason:</strong> {value.reason}
+        </p>
+      )}
+      {evidence.length > 0 && (
+        <ul className="list-disc pl-4">
+          {evidence.map((item, index) => (
+            <li key={`${index}-${item}`}>{item}</li>
+          ))}
+        </ul>
+      )}
+      {hasEvidenceMetadata && (
+        <details>
+          <summary className="cursor-pointer font-semibold">
+            Supporting evidence metadata and provenance
+          </summary>
+          <pre className="mt-1 whitespace-pre-wrap break-words">
+            {JSON.stringify(value.supporting_evidence, null, 2)}
+          </pre>
+        </details>
+      )}
+      {value.provenance && Object.keys(value.provenance).length > 0 && (
+        <p>
+          <strong>{label} provenance:</strong> {display(value.provenance)}
+        </p>
+      )}
+    </div>
+  );
+}
 
-      {/* Input Parameters Form */}
-      <div className="mt-4 rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-        <h2 className="text-xs font-bold uppercase tracking-wider text-slate-800 mb-3">
-          Patient Profile Parameters
-        </h2>
+export function PatientMatchView() {
+  const [filters, setFilters] = useState<FilterValues>(EMPTY_FILTERS);
+  const [result, setResult] = useState<ScenarioResponse | null>(null);
+  const [intelligence, setIntelligence] = useState<
+    Record<string, PatientIntelligence>
+  >({});
+  const [intelligenceErrors, setIntelligenceErrors] = useState<
+    Record<string, string>
+  >({});
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-xs">
-          <div>
-            <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-              HER2 Alteration / Mutation
-            </label>
-            <select
-              value={selectedMutation}
-              onChange={(e) => setSelectedMutation(e.target.value)}
-              className="w-full rounded border border-slate-300 bg-slate-50 p-2 text-xs font-medium text-slate-800 outline-none"
-            >
-              <option value="HER2_MUTANT_L755S">HER2 Kinase Domain Mutant (L755S / V777L)</option>
-              <option value="HER2_EXON_20">HER2 Exon 20 Insertion (A775_G776insYVMA)</option>
-              <option value="HER2_AMP">HER2 Amplified (IHC 3+ / FISH+)</option>
-              <option value="HER2_LOW">HER2 Low (IHC 1+ or 2+/FISH-)</option>
-            </select>
-          </div>
+  function setFilter(name: FilterName, value: string) {
+    setFilters((current) => ({ ...current, [name]: value }));
+  }
 
-          <div>
-            <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-              Hormone Receptor (ER/PR) Status
-            </label>
-            <select
-              value={hormoneStatus}
-              onChange={(e) => setHormoneStatus(e.target.value)}
-              className="w-full rounded border border-slate-300 bg-slate-50 p-2 text-xs font-medium text-slate-800 outline-none"
-            >
-              <option value="ER_POS_NON_AMP">ER-positive / HER2 Non-Amplified</option>
-              <option value="ER_POS_HER2_AMP">Triple Positive (ER+ / HER2-amplified)</option>
-              <option value="ER_NEG_HER2_AMP">ER-negative / HER2-amplified</option>
-            </select>
-          </div>
+  async function submitScenario(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const hasFilter = Object.values(filters).some((value) => value.trim());
+    if (!hasFilter) {
+      setError("Enter at least one cohort filter before searching.");
+      return;
+    }
 
-          <div>
-            <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-              Prior Systemic Regimens
-            </label>
-            <select
-              value={priorTherapy}
-              onChange={(e) => setPriorTherapy(e.target.value)}
-              className="w-full rounded border border-slate-300 bg-slate-50 p-2 text-xs font-medium text-slate-800 outline-none"
-            >
-              <option value="POST_CDK46">Post-CDK4/6 inhibitor + Aromatase Inhibitor</option>
-              <option value="POST_TRASTUZUMAB">Post-Adjuvant Trastuzumab</option>
-              <option value="POST_TDXD">Post-Trastuzumab Deruxtecan (T-DXd)</option>
-            </select>
-          </div>
+    const query: CohortQuery = {
+      disease_subtype: filters.disease_subtype.trim(),
+      mutation: filters.mutation.trim() || null,
+      biomarker: filters.biomarker.trim() || null,
+      expression: filters.expression.trim() || null,
+      amplification: filters.amplification.trim() || null,
+      protein_expression: filters.protein_expression.trim() || null,
+      prior_therapy: filters.prior_therapy
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean),
+      line_of_therapy: filters.line_of_therapy.trim() || null,
+      resistance_state: filters.resistance_state.trim() || null,
+      cns_status: filters.cns_status.trim() || null,
+    };
 
-          <div>
-            <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-              CNS / Brain Metastasis Status
-            </label>
-            <div className="flex items-center gap-3 mt-2">
-              <label className="flex items-center gap-1.5 cursor-pointer">
-                <input
-                  type="radio"
-                  name="cns"
-                  checked={hasCnsMets}
-                  onChange={() => setHasCnsMets(true)}
-                  className="text-blue-600"
-                />
-                <span className="font-medium text-slate-800">Active CNS Mets</span>
-              </label>
-              <label className="flex items-center gap-1.5 cursor-pointer">
-                <input
-                  type="radio"
-                  name="cns"
-                  checked={!hasCnsMets}
-                  onChange={() => setHasCnsMets(false)}
-                  className="text-blue-600"
-                />
-                <span className="font-medium text-slate-800">No CNS Mets</span>
-              </label>
+    setLoading(true);
+    setError(null);
+    setResult(null);
+    setIntelligence({});
+    setIntelligenceErrors({});
+    try {
+      const response = await requestJson<ScenarioResponse>(
+        "/api/patient-match/scenario",
+        {
+          method: "POST",
+          body: query,
+        },
+      );
+      setResult(response);
+      const reports = await Promise.allSettled(
+        response.ranked_candidates.map(async (candidate) => {
+          const report = await requestJson<PatientIntelligence>(
+            `/api/patient-match/intelligence/${encodeURIComponent(candidate.asset_id)}`,
+          );
+          return [candidate.asset_id, report] as const;
+        }),
+      );
+      const available: Record<string, PatientIntelligence> = {};
+      const unavailable: Record<string, string> = {};
+      reports.forEach((report, index) => {
+        const candidateId = response.ranked_candidates[index]?.asset_id;
+        if (report.status === "fulfilled")
+          available[report.value[0]] = report.value[1];
+        else if (candidateId)
+          unavailable[candidateId] = errorMessage(report.reason);
+      });
+      setIntelligence(available);
+      setIntelligenceErrors(unavailable);
+    } catch (caught) {
+      setError(errorMessage(caught));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="flex-1 overflow-y-auto bg-[#f8fafc] px-4 py-5 text-slate-800 sm:px-6">
+      <div className="mx-auto max-w-6xl">
+        <header className="border-b border-slate-200 pb-4">
+          <p className="text-xs font-semibold uppercase tracking-wider text-blue-700">
+            Existing PatientMatch scenario and intelligence APIs
+          </p>
+          <h1 className="mt-1 text-2xl font-bold text-slate-900">
+            PatientMatch population intelligence
+          </h1>
+          <p className="mt-1 text-sm text-slate-600">
+            Drug-development cohort analysis only. This is not a
+            patient-specific clinical treatment recommendation.
+          </p>
+          <p className="mt-3 rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-950">
+            Validation limitation: the current scenario endpoint ranks a fixed
+            benchmark asset set with deterministic keyword rules. Its ranks and
+            match scores are API outputs, not calibrated or clinically validated
+            predictions. Review the returned evidence and unknowns before
+            drawing conclusions.
+          </p>
+        </header>
+
+        <form
+          onSubmit={submitScenario}
+          className="mt-4 rounded-xl border border-slate-200 bg-white p-4"
+        >
+          <fieldset>
+            <legend className="font-semibold text-slate-900">
+              Cohort filters
+            </legend>
+            <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-950">
+              Backend limitation: the current scenario matcher uses disease
+              subtype, mutation, biomarker, resistance state, and prior
+              therapies. Expression, amplification, protein expression, line of
+              therapy, and CNS status are accepted by the API but are not
+              separate matching inputs and will not affect its ranks or scores.
+            </p>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {FILTERS.map(([name, label]) => (
+                <label
+                  key={name}
+                  className="grid gap-1 text-xs font-semibold text-slate-700"
+                >
+                  {label}
+                  <input
+                    type="text"
+                    value={filters[name]}
+                    onChange={(event) => setFilter(name, event.target.value)}
+                    className="rounded border border-slate-300 px-2.5 py-2 text-sm font-normal"
+                  />
+                </label>
+              ))}
             </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Match Results */}
-      <div className="mt-6 space-y-4">
-        <h2 className="text-xs font-bold uppercase tracking-wider text-slate-600">
-          Ranked Candidate Matches ({matches.length})
-        </h2>
-
-        {matches.map((item, idx) => (
-          <div
-            key={item.asset.id}
-            className={`rounded-lg border p-4 shadow-sm bg-white transition-all ${
-              idx === 0
-                ? "border-emerald-300 ring-1 ring-emerald-400/40"
-                : "border-slate-200"
-            }`}
+          </fieldset>
+          <button
+            type="submit"
+            disabled={loading}
+            className="mt-4 rounded-md bg-blue-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
           >
-            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="flex h-5 w-5 items-center justify-center rounded-full bg-slate-900 text-[10px] font-bold text-white">
-                    #{idx + 1}
-                  </span>
-                  <h3 className="text-base font-bold text-slate-900">
-                    {item.asset.name}
-                  </h3>
-                  <span className="rounded bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-800">
-                    {item.asset.target}
-                  </span>
-                  <span className="rounded bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-700">
-                    {item.asset.stage}
-                  </span>
-                  {idx === 0 && (
-                    <span className="rounded bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800">
-                      TOP STRATIFIED MATCH
-                    </span>
+            {loading ? "Evaluating cohort…" : "Rank populations"}
+          </button>
+        </form>
+
+        {loading && (
+          <p role="status" className="mt-4 text-sm text-slate-600">
+            Loading backend cohort ranking and evidence…
+          </p>
+        )}
+        {error && (
+          <p
+            role="alert"
+            className="mt-4 rounded-lg bg-rose-50 p-4 text-sm text-rose-900"
+          >
+            {error}
+          </p>
+        )}
+
+        {result && (
+          <section
+            aria-label="Ranked patient populations"
+            className="mt-5 space-y-4"
+          >
+            <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-950">
+              <p>
+                <strong>Backend interpretation:</strong>{" "}
+                {result.interpretation || "UNKNOWN"}
+              </p>
+              <p className="mt-1">{result.disclaimer}</p>
+              <p className="mt-1 text-xs">
+                Evaluated at: {result.evaluated_at}
+              </p>
+            </div>
+            {result.ranked_candidates.map((candidate) => {
+              const report = intelligence[candidate.asset_id];
+              const data = report?.data;
+              const score = data?.patient_match_score;
+              const confidence = data?.confidence;
+              const model = data?.ml_component;
+              const primary = data?.primary_population;
+              const citations = [
+                ...candidate.evidence_citations,
+                ...evidenceReferences(primary?.supporting_evidence),
+                ...evidenceReferences(data?.evidence),
+              ];
+              const distinctCitations = [
+                ...new Set(citations.filter((item) => item !== "UNKNOWN")),
+              ];
+              return (
+                <article
+                  key={candidate.asset_id}
+                  className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        Backend rule-based benchmark rank #{candidate.rank}
+                      </p>
+                      <h2 className="mt-1 text-lg font-bold text-slate-900">
+                        {candidate.asset_name}
+                      </h2>
+                      <p className="mt-1 text-sm">
+                        <strong>Patient population fit:</strong>{" "}
+                        {candidate.population_fit || "UNKNOWN"}
+                      </p>
+                      <p className="mt-1 text-sm">
+                        <strong>Rationale:</strong>{" "}
+                        {candidate.mechanistic_synergy || "UNKNOWN"}
+                      </p>
+                    </div>
+                    <div className="rounded bg-slate-50 p-3 text-sm">
+                      <p>
+                        <strong>API heuristic cohort match score:</strong>{" "}
+                        {display(candidate.match_score)}
+                      </p>
+                      <p>
+                        <strong>Intelligence confidence:</strong>{" "}
+                        {confidenceDisplay(confidence?.value)}
+                        {" · "}
+                        {confidence?.status ?? "UNKNOWN"}
+                      </p>
+                    </div>
+                  </div>
+
+                  {intelligenceErrors[candidate.asset_id] && (
+                    <p
+                      role="alert"
+                      className="mt-3 rounded bg-rose-50 p-2 text-xs text-rose-900"
+                    >
+                      Intelligence detail unavailable:{" "}
+                      {intelligenceErrors[candidate.asset_id]}
+                    </p>
                   )}
-                </div>
-                <div className="text-xs text-slate-500 mt-0.5">
-                  Owner: {item.asset.owner} | Modality: {item.asset.modality}
-                </div>
-              </div>
+                  {report && (
+                    <div className="mt-3 space-y-3 border-t border-slate-100 pt-3">
+                      <div className="grid gap-3 md:grid-cols-2">
+                        <div className="space-y-2 text-xs">
+                          <IntelligenceDetail
+                            label="Primary population"
+                            value={primary}
+                          />
+                          <IntelligenceDetail
+                            label="Secondary population"
+                            value={data?.secondary_population}
+                          />
+                          <IntelligenceDetail
+                            label="Low-likelihood population"
+                            value={data?.low_likelihood_population}
+                          />
+                          <IntelligenceDetail
+                            label="Biomarker strategy"
+                            value={data?.biomarker_strategy}
+                          />
+                          <p>
+                            <strong>API match score state:</strong>{" "}
+                            {score?.status ?? "UNKNOWN"} ·{" "}
+                            {epistemicLabel(score?.epistemic_class)}
+                          </p>
+                          <p>
+                            <strong>API match score value:</strong>{" "}
+                            {display(score?.value)}
+                          </p>
+                          {(primary?.reason || score?.reason) && (
+                            <p>
+                              <strong>Unknown / reason:</strong>{" "}
+                              {primary?.reason ?? score?.reason}
+                            </p>
+                          )}
+                        </div>
+                        <div className="space-y-2 text-xs">
+                          <p>
+                            <strong>Population intelligence state:</strong>{" "}
+                            {report.status ?? "UNKNOWN"}
+                          </p>
+                          <p>
+                            <strong>Model state:</strong>{" "}
+                            {model?.available ? "AVAILABLE" : "UNAVAILABLE"}
+                          </p>
+                          <p>
+                            <strong>Model/version:</strong>{" "}
+                            {model?.model_name ?? "UNKNOWN"} /{" "}
+                            {model?.model_version ?? "UNKNOWN"}
+                          </p>
+                          <p>
+                            <strong>Model feature version:</strong>{" "}
+                            {model?.feature_version ?? "UNKNOWN"}
+                          </p>
+                          {model?.reason && (
+                            <p>
+                              <strong>Model reason:</strong> {model.reason}
+                            </p>
+                          )}
+                          <p>
+                            <strong>Epistemic classes reported:</strong>{" "}
+                            {data?.epistemic_classes
+                              ?.map(epistemicLabel)
+                              .join(", ") || "UNKNOWN"}
+                          </p>
+                        </div>
+                      </div>
+                      {data?.unknowns?.length ? (
+                        <ul
+                          aria-label="PatientMatch uncertainty and unknowns"
+                          className="list-disc rounded bg-amber-50 p-3 pl-7 text-xs text-amber-950"
+                        >
+                          {data.unknowns.map((unknown, index) => (
+                            <li key={`${index}-${unknown}`}>{unknown}</li>
+                          ))}
+                        </ul>
+                      ) : null}
+                      <div>
+                        <h3 className="text-xs font-semibold text-slate-800">
+                          Contradictory evidence
+                        </h3>
+                        {data?.contradictory_evidence?.length ? (
+                          <ul className="mt-1 list-disc pl-4 text-xs">
+                            {data.contradictory_evidence.map((item, index) => (
+                              <li key={index}>{display(item)}</li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <p className="mt-1 text-xs text-slate-600">
+                            Not returned by the PatientMatch intelligence API;
+                            absence is not evidence that contradictions do not
+                            exist.
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )}
 
-              <div className="flex items-center gap-4">
-                <div className="text-right">
-                  <div className="text-[10px] text-slate-400 font-semibold uppercase">
-                    Match Score
+                  <div className="mt-3 grid gap-3 border-t border-slate-100 pt-3 md:grid-cols-2">
+                    <div>
+                      <h3 className="text-xs font-semibold text-slate-800">
+                        Supporting evidence
+                      </h3>
+                      {distinctCitations.length ? (
+                        <ul className="mt-1 list-disc space-y-1 pl-4 text-xs">
+                          {distinctCitations.map((citation, index) => (
+                            <li key={`${index}-${citation}`}>{citation}</li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="mt-1 text-xs text-slate-600">
+                          Evidence unavailable / UNKNOWN.
+                        </p>
+                      )}
+                    </div>
+                    <div>
+                      <h3 className="text-xs font-semibold text-slate-800">
+                        Contradictory evidence
+                      </h3>
+                      {candidate.contradictory_evidence?.length ? (
+                        <ul className="mt-1 list-disc pl-4 text-xs">
+                          {candidate.contradictory_evidence.map(
+                            (item, index) => (
+                              <li key={index}>{display(item)}</li>
+                            ),
+                          )}
+                        </ul>
+                      ) : (
+                        <p className="mt-1 text-xs text-slate-600">
+                          Not returned by this scenario API; absence is not
+                          negative evidence.
+                        </p>
+                      )}
+                    </div>
                   </div>
-                  <div
-                    className={`text-2xl font-bold ${
-                      item.matchScore >= 80
-                        ? "text-emerald-700"
-                        : item.matchScore >= 50
-                        ? "text-blue-700"
-                        : "text-amber-700"
-                    }`}
-                  >
-                    {item.matchScore}%
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Rationale and Details */}
-            <div className="mt-3 pt-3 border-t border-slate-100 grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
-              <div className="md:col-span-2 space-y-1.5">
-                <div className="font-semibold text-slate-700">Match Rationale:</div>
-                <ul className="space-y-1 text-slate-600">
-                  {item.reasons.map((r, rIdx) => (
-                    <li key={rIdx} className="flex items-start gap-1.5">
-                      <span className="text-blue-600 font-bold">•</span>
-                      <span>{r}</span>
-                    </li>
-                  ))}
-                </ul>
-
-                {item.resistanceRisks.length > 0 && (
-                  <div className="mt-2 rounded bg-amber-50 p-2 text-amber-900 border border-amber-200">
-                    ⚠️ <strong>Resistance Risk Alert:</strong> {item.resistanceRisks.join(" ")}
-                  </div>
-                )}
-              </div>
-
-              <div className="rounded bg-slate-50 p-3 space-y-2">
-                <div>
-                  <div className="text-[10px] font-semibold text-slate-500">
-                    RECOMMENDED REGIMEN
-                  </div>
-                  <div className="font-bold text-slate-800">
-                    {item.asset.name} {item.recommendedCombination}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-[10px] font-semibold text-slate-500">
-                    INTRACRANIAL PENETRATION
-                  </div>
-                  <div className={`font-semibold ${item.cnsBenefit ? "text-emerald-700" : "text-slate-600"}`}>
-                    {item.cnsBenefit ? "✓ Blood-Brain Barrier Active" : "Limited Intracranial Coverage"}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        ))}
+                  {data?.evidence?.length ? (
+                    <details className="mt-3 border-t border-slate-100 pt-3 text-xs">
+                      <summary className="cursor-pointer font-semibold">
+                        PatientMatch evidence metadata and provenance
+                      </summary>
+                      <pre className="mt-2 whitespace-pre-wrap break-words">
+                        {JSON.stringify(data.evidence, null, 2)}
+                      </pre>
+                    </details>
+                  ) : null}
+                  {candidate.unknowns?.length ? (
+                    <ul className="mt-3 list-disc rounded bg-amber-50 p-3 pl-7 text-xs text-amber-950">
+                      {candidate.unknowns.map((unknown, index) => (
+                        <li key={`${index}-${unknown}`}>{unknown}</li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </article>
+              );
+            })}
+            {!result.ranked_candidates.length && (
+              <p className="rounded-lg border border-dashed border-slate-300 bg-white p-6 text-center text-sm text-slate-600">
+                No populations were returned by the backend for this cohort.
+              </p>
+            )}
+          </section>
+        )}
       </div>
     </div>
   );

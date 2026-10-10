@@ -121,6 +121,57 @@ class LogisticRegressionModel:
         return model
 
 
+class SafetyMultiOutputLogisticRegression:
+    """Independent LogisticRegression heads for the versioned safety endpoints."""
+
+    def __init__(
+        self,
+        target_names: List[str],
+        *,
+        random_state: int = 42,
+        max_iter: int = 500,
+        C: float = 1.0,
+    ) -> None:
+        self.target_names = list(target_names)
+        self.random_state = random_state
+        self.max_iter = max_iter
+        self.C = C
+        self.estimators_: Dict[str, Any] = {}
+
+    def fit(
+        self,
+        X: List[List[float]],
+        target_values: Dict[str, List[float]],
+    ) -> SafetyMultiOutputLogisticRegression:
+        from sklearn.linear_model import LogisticRegression
+
+        if not X:
+            raise ValueError("Safety model training data cannot be empty.")
+        for target_name in self.target_names:
+            labels = target_values.get(target_name)
+            if labels is None or len(labels) != len(X):
+                raise ValueError(f"Safety labels are missing or misaligned for '{target_name}'.")
+            if len(set(labels)) != 2:
+                raise ValueError(f"Safety target '{target_name}' requires both classes for fitting.")
+            estimator = LogisticRegression(
+                solver="liblinear",
+                random_state=self.random_state,
+                max_iter=self.max_iter,
+                C=self.C,
+            )
+            estimator.fit(X, labels)
+            self.estimators_[target_name] = estimator
+        return self
+
+    def predict_proba(self, X: List[List[float]]) -> Dict[str, List[float]]:
+        if not self.estimators_:
+            raise ValueError("Safety multi-output model has not been fitted.")
+        return {
+            target_name: estimator.predict_proba(X)[:, 1].tolist()
+            for target_name, estimator in self.estimators_.items()
+        }
+
+
 # ==============================================================================
 # 2. Decision Tree & Random Forest Baseline
 # ==============================================================================

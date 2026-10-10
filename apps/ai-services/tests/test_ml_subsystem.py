@@ -37,6 +37,7 @@ from app.ml.features import FeatureStore
 from app.ml.models import (
     DriftStatus,
     FeatureDataType,
+    FeatureRecord,
     InferenceRequest,
     ModelArchitecture,
     ModelArtifact,
@@ -92,6 +93,146 @@ def test_feature_store_batch_extraction():
     assert len(vectors) >= 4
     for vec in vectors:
         assert len(vec.features) == 8
+
+
+def test_versioned_feature_store_records_provenance_and_versions():
+    store = FeatureStore()
+    asset = list_fixture_assets()[0]
+    record_v1 = FeatureRecord(
+        feature_name="biochemical_potency_score",
+        value=72.5,
+        unit="%",
+        asset=asset.id,
+        asset_id=asset.id,
+        tenant_id="tenant-alpha",
+        evidence_references=["ev-001", "ev-002"],
+        observation_date=date(2023, 1, 1),
+        prediction_cutoff=date(2023, 3, 1),
+        feature_version="v1",
+        extraction_method="point_in_time_feature_extraction",
+        confidence=0.88,
+    )
+    record_v2 = FeatureRecord(
+        feature_name="biochemical_potency_score",
+        value=80.5,
+        unit="%",
+        asset=asset.id,
+        asset_id=asset.id,
+        tenant_id="tenant-alpha",
+        evidence_references=["ev-003", "ev-004"],
+        observation_date=date(2024, 1, 1),
+        prediction_cutoff=date(2024, 3, 1),
+        feature_version="v2",
+        extraction_method="point_in_time_feature_extraction",
+        confidence=0.94,
+    )
+
+    store.record_feature(record_v1)
+    store.record_feature(record_v2)
+
+    versions = store.list_feature_versions(asset.id, "biochemical_potency_score", tenant_id="tenant-alpha")
+    assert len(versions) == 2
+    assert {r.feature_version for r in versions} == {"v1", "v2"}
+    assert store.get_feature_record(asset.id, "biochemical_potency_score", feature_version="v2", tenant_id="tenant-alpha").value == 80.5
+    assert store.get_feature_record(asset.id, "biochemical_potency_score", tenant_id="tenant-alpha").feature_version == "v2"
+    assert store.get_feature_record(asset.id, "biochemical_potency_score", tenant_id="tenant-alpha").evidence_references == ["ev-003", "ev-004"]
+    assert store.get_feature_record(asset.id, "biochemical_potency_score", tenant_id="tenant-alpha").prediction_cutoff == date(2024, 3, 1)
+    assert store.get_feature_record(asset.id, "biochemical_potency_score", tenant_id="tenant-alpha").confidence == 0.94
+
+
+def test_versioned_feature_store_can_materialize_asset_records():
+    store = FeatureStore()
+    asset = list_fixture_assets()[0]
+    records = store.create_versioned_feature_records(
+        asset,
+        observation_date=date(2024, 2, 1),
+        prediction_cutoff=date(2024, 3, 1),
+        feature_version="v3",
+        tenant_id="tenant-beta",
+    )
+    assert len(records) == 8
+    assert all(record.feature_name in store._definitions for record in records)
+    assert all(record.asset_id == asset.id for record in records)
+    assert all(record.prediction_cutoff == date(2024, 3, 1) for record in records)
+    assert all(record.asset_id == asset.id for record in records)
+    assert store.get_feature_record(asset.id, "target_selectivity_score", feature_version="v3", tenant_id="tenant-beta") is not None
+
+
+def test_prompt_29_feature_engineering_records_all_required_categories_and_missing_values():
+    store = FeatureStore()
+    asset = list_fixture_assets()[0]
+
+    records = store.create_prompt_29_feature_records(
+        asset,
+        observation_date=date(2024, 2, 1),
+        prediction_cutoff=date(2024, 3, 1),
+        feature_version="v1",
+        tenant_id="tenant-p29",
+    )
+
+    names = {record.feature_name for record in records}
+    required = {
+        "potency",
+        "selectivity",
+        "selectivity_ratio",
+        "model_count",
+        "tumor_regression",
+        "biomarker_strength",
+        "clinical_response",
+        "PFS",
+        "OS",
+        "AE_rate",
+        "discontinuation",
+        "brain_plasma",
+        "Kp",
+        "Kp_uu",
+        "CSF_exposure",
+        "competition_density",
+        "development_stage",
+        "ownership_signals",
+    }
+    assert required.issubset(names)
+
+    for record in records:
+        assert record.asset_id == asset.id
+        assert record.prediction_cutoff == date(2024, 3, 1)
+        assert record.observation_date == date(2024, 2, 1)
+        assert record.tenant_id == "tenant-p29"
+        assert record.evidence_references
+        assert record.feature_version == "v1"
+        assert record.feature_name in names
+        if record.feature_name in {"selectivity_ratio", "tumor_regression", "clinical_response", "PFS", "OS", "AE_rate", "discontinuation", "Kp", "Kp_uu", "CSF_exposure", "competition_density"}:
+            assert record.value is None
+            assert record.value != 0
+
+    assert store.get_feature_record(asset.id, "selectivity_ratio", feature_version="v1", tenant_id="tenant-p29") is not None
+    assert store.get_feature_record(asset.id, "development_stage", tenant_id="tenant-p29").value == asset.stage.value
+    assert store.get_feature_record(asset.id, "ownership_signals", tenant_id="tenant-p29").value == asset.owner
+
+
+def test_prompt_29_feature_versions_are_distinct_and_temporal_cutoff_preserved():
+    store = FeatureStore()
+    asset = list_fixture_assets()[0]
+
+    v1 = store.create_prompt_29_feature_records(
+        asset,
+        observation_date=date(2023, 1, 1),
+        prediction_cutoff=date(2023, 3, 1),
+        feature_version="v1",
+        tenant_id="tenant-p29",
+    )
+    v2 = store.create_prompt_29_feature_records(
+        asset,
+        observation_date=date(2024, 1, 1),
+        prediction_cutoff=date(2024, 3, 1),
+        feature_version="v2",
+        tenant_id="tenant-p29",
+    )
+
+    assert len(v1) == len(v2) == 18
+    assert {r.feature_version for r in store.list_feature_versions(asset.id, "potency", tenant_id="tenant-p29")} == {"v1", "v2"}
+    assert store.get_feature_record(asset.id, "potency", feature_version="v2", tenant_id="tenant-p29").prediction_cutoff == date(2024, 3, 1)
+    assert store.get_feature_record(asset.id, "potency", feature_version="v1", tenant_id="tenant-p29").prediction_cutoff == date(2023, 3, 1)
 
 
 # ==============================================================================

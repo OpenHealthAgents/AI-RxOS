@@ -1,13 +1,24 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 from uuid import UUID, uuid4
+
+from app.opportunity_engine.intelligence import (
+    EpistemicClass,
+    IntelligenceEvidence,
+    IntelligenceRuleFinding,
+    IntelligenceValue,
+    IntelligenceValueStatus,
+    registered_model_prediction,
+    unknown_value,
+)
 
 from .models import (
     ClinicalDevelopmentProfile,
     ClinicalExpertInterpretation,
+    ClinicalIntelligence,
     ClinicalModelPrediction,
     ClinicalScoreLineage,
     ClinicalStage,
@@ -135,6 +146,203 @@ class ClinicalDevelopmentIntelligenceEngine:
             self.get_benchmark_profile("neratinib"),
             self.get_benchmark_profile("ox-her2-01"),
         ]
+
+    def evaluate_intelligence(
+        self,
+        asset_id: str,
+        prediction_cutoff: date,
+        *,
+        tenant_id: Optional[str] = None,
+        asset_name: Optional[str] = None,
+        custom_outcomes: Optional[List[ObservedClinicalOutcome]] = None,
+        feature_store: Any | None = None,
+        model_registry: Any | None = None,
+    ) -> ClinicalIntelligence:
+        """Combine dated clinical facts with an exact registered Prompt 38 prediction, if available."""
+        stored = self._canonical_data.get(asset_id, {})
+        if custom_outcomes and any(item.tenant_id not in (None, tenant_id) for item in custom_outcomes):
+            raise ValueError("Clinical outcomes must belong to the requested tenant.")
+        all_outcomes = [
+            item
+            for item in (
+                list(stored.get("observed_outcomes", [])) + list(custom_outcomes or [])
+            )
+            if item.tenant_id in (None, tenant_id)
+        ]
+        admissible = [
+            item
+            for item in all_outcomes
+            if item.reported_date is not None
+            and item.reported_date <= prediction_cutoff
+        ]
+        excluded = [item for item in all_outcomes if item not in admissible]
+
+        def outcome_evidence(item: ObservedClinicalOutcome) -> IntelligenceEvidence:
+            return IntelligenceEvidence(
+                evidence_id=str(item.id),
+                source_type="clinical_trial_outcome",
+                source_reference=item.trial_id,
+                citation=item.source_citation,
+                observed_at=item.reported_date,
+                confidence=None,
+                epistemic_class=EpistemicClass.FACT,
+                provenance={
+                    "trial_title": item.trial_title,
+                    "phase": item.phase.value,
+                    "sample_size": item.sample_size,
+                    "population": item.population,
+                    "biomarker_status": item.biomarker_status,
+                    "endpoint_review": item.endpoint_review.value,
+                    "pmid": item.pmid,
+                },
+            )
+
+        evidence = [outcome_evidence(item) for item in admissible]
+        excluded_evidence = [
+            IntelligenceEvidence(
+                evidence_id=str(item.id),
+                source_type="clinical_trial_outcome_excluded_from_snapshot",
+                source_reference=item.trial_id,
+                citation=item.source_citation,
+                observed_at=item.reported_date,
+                confidence=None,
+                epistemic_class=EpistemicClass.FACT,
+                provenance={
+                    "exclusion_reason": (
+                        "outcome_date_missing"
+                        if item.reported_date is None
+                        else "outcome_after_prediction_cutoff"
+                    ),
+                    "prediction_cutoff": prediction_cutoff.isoformat(),
+                },
+            )
+            for item in excluded
+        ]
+        component, prediction = registered_model_prediction(
+            model_name="clinical_success",
+            asset_id=asset_id,
+            prediction_cutoff=prediction_cutoff,
+            tenant_id=tenant_id,
+            registry=model_registry,
+            feature_store=feature_store,
+        )
+
+        if prediction is not None and prediction.probability is not None:
+            clinical_success = IntelligenceValue(
+                name="clinical_success_probability",
+                value=prediction.probability,
+                status=IntelligenceValueStatus.AVAILABLE,
+                epistemic_class=EpistemicClass.ML_PREDICTION,
+                confidence=prediction.confidence,
+                supporting_evidence=[
+                    IntelligenceEvidence(
+                        evidence_id=f"model_input:{reference}",
+                        source_type="model_input_feature",
+                        source_reference=reference,
+                        confidence=None,
+                        epistemic_class=EpistemicClass.ML_PREDICTION,
+                        provenance={
+                            "model_name": prediction.model_name,
+                            "model_version": prediction.model_version,
+                            "feature_version": prediction.feature_version,
+                        },
+                    )
+                    for metadata in prediction.input_snapshot.get("observation_dates", {}).values()
+                    for reference in metadata.get("evidence_references", [])
+                ],
+                provenance={
+                    "model_name": prediction.model_name,
+                    "model_version": prediction.model_version,
+                    "feature_version": prediction.feature_version,
+                    "prediction_cutoff": prediction.prediction_cutoff.isoformat()
+                    if prediction.prediction_cutoff
+                    else None,
+                    "prediction_timestamp": prediction.prediction_timestamp.isoformat(),
+                    "input_snapshot": prediction.input_snapshot,
+                },
+            )
+        else:
+            clinical_success = unknown_value(
+                "clinical_success_probability",
+                component.reason or "Clinical ML prediction is unavailable.",
+                status=IntelligenceValueStatus.UNAVAILABLE,
+                provenance={
+                    "model_name": component.model_name,
+                    "model_version": component.model_version,
+                    "feature_version": component.feature_version,
+                    "prediction_cutoff": prediction_cutoff.isoformat(),
+                },
+            )
+
+        if admissible:
+            phases = sorted({outcome.phase.value for outcome in admissible})
+            readiness = IntelligenceValue(
+                name="clinical_readiness",
+                value={"documented_trial_phases": phases, "dated_outcome_count": len(admissible)},
+                status=IntelligenceValueStatus.AVAILABLE,
+                epistemic_class=EpistemicClass.DERIVED_FEATURE,
+                confidence=None,
+                supporting_evidence=evidence,
+                provenance={
+                    "rule": "summarize only phase and count from cutoff-valid reported trial outcomes",
+                    "prediction_cutoff": prediction_cutoff.isoformat(),
+                },
+            )
+            maturity = IntelligenceValue(
+                name="evidence_maturity",
+                value={"documented_trial_phases": phases, "dated_outcome_count": len(admissible)},
+                status=IntelligenceValueStatus.AVAILABLE,
+                epistemic_class=EpistemicClass.DERIVED_FEATURE,
+                confidence=None,
+                supporting_evidence=evidence,
+                provenance={
+                    "rule": "maturity reflects dated outcome records only; not probability of success",
+                    "prediction_cutoff": prediction_cutoff.isoformat(),
+                },
+            )
+            rule_findings = [
+                IntelligenceRuleFinding(
+                    rule_id="clinical:dated_trial_outcome_present",
+                    result="cutoff_valid_clinical_outcomes_documented",
+                    applied=True,
+                    supporting_evidence_ids=[str(outcome.id) for outcome in admissible],
+                    provenance={"phases": phases},
+                )
+            ]
+        else:
+            readiness = unknown_value(
+                "clinical_readiness",
+                "No dated clinical trial outcome is available at the prediction cutoff.",
+                status=IntelligenceValueStatus.INSUFFICIENT_EVIDENCE,
+            )
+            maturity = unknown_value(
+                "evidence_maturity",
+                "No dated clinical trial outcome is available at the prediction cutoff.",
+                status=IntelligenceValueStatus.INSUFFICIENT_EVIDENCE,
+            )
+            rule_findings = []
+
+        development_risk = unknown_value(
+            "development_risk",
+            "No cutoff-valid clinical risk prediction is available; risk is not inferred from missing evidence.",
+            status=IntelligenceValueStatus.UNAVAILABLE,
+            provenance={"clinical_ml_model": "clinical_success"},
+        )
+
+        return ClinicalIntelligence(
+            asset_id=asset_id,
+            asset_name=asset_name or stored.get("name", asset_id.capitalize()),
+            tenant_id=tenant_id,
+            prediction_cutoff=prediction_cutoff,
+            clinical_success_probability=clinical_success,
+            clinical_readiness=readiness,
+            development_risk=development_risk,
+            evidence_maturity=maturity,
+            evidence=evidence,
+            excluded_undated_evidence=excluded_evidence,
+            rule_findings=rule_findings,
+            ml_component=component,
+        )
 
     # ==============================================================================
     # 4 Canonical Score Derivations

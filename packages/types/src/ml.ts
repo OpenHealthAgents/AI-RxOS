@@ -58,9 +58,36 @@ export const FeatureVectorSchema = z.object({
   entity_id: z.string(),
   as_of_date: z.string(),
   features: z.record(z.string(), z.number()),
+  feature_version: z.string().default("v1"),
+  unit: z.string().default("%"),
+  observation_date: z.string().optional().nullable(),
+  prediction_cutoff: z.string().optional().nullable(),
+  evidence_references: z.array(z.string()).default([]),
+  extraction_method: z.string().default("point_in_time_feature_extraction"),
+  confidence: z.number().min(0).max(1).default(0.9),
   created_at: z.string().datetime().optional(),
 });
 export type FeatureVector = z.infer<typeof FeatureVectorSchema>;
+
+export const FeatureRecordSchema = z.object({
+  feature_name: z.string(),
+  value: z.union([z.number(), z.string(), z.boolean()]),
+  unit: z.string().default(""),
+  asset: z.string(),
+  asset_id: z.string().optional().nullable(),
+  tenant_id: z.string().optional().nullable(),
+  organization_id: z.string().optional().nullable(),
+  evidence_references: z.array(z.string()).default([]),
+  evidence_ids: z.array(z.string()).optional().nullable(),
+  observation_date: z.string(),
+  prediction_cutoff: z.string(),
+  feature_version: z.string().default("v1"),
+  extraction_method: z.string().default("point_in_time_feature_extraction"),
+  confidence: z.number().min(0).max(1).default(0.9),
+  provenance: z.record(z.string(), z.unknown()).default({}),
+  created_at: z.string().datetime().optional(),
+});
+export type FeatureRecord = z.infer<typeof FeatureRecordSchema>;
 
 export const TargetLabelSchema = z.object({
   entity_id: z.string(),

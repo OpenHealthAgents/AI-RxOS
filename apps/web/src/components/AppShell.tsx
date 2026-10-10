@@ -24,10 +24,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex h-screen w-screen flex-col overflow-hidden bg-[#f8fafc] text-slate-800 antialiased">
       {/* Top Application Header */}
-      <Header
-        searchQuery={searchQuery}
-        onSearchChange={setSearchQuery}
-      />
+      <Header searchQuery={searchQuery} onSearchChange={setSearchQuery} />
 
       {/* Decision Workflow Stepper (10 Steps) */}
       <WorkflowStepper />
@@ -38,7 +35,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <Sidebar
           activeSection={activeSection}
           onSelectSection={setActiveSection}
-          onOpenEvidenceModal={() => setIsEvidenceModalOpen(true)}
         />
 
         {/* Dynamic Route Content */}

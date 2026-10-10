@@ -1,0 +1,16 @@
+version: '3.8'
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: ai_rxos
+      POSTGRES_PASSWORD: changeme
+      POSTGRES_DB: ai_rxos
+    ports:
+      - 5432:5432
+  redis:
+    image: redis:7
+    ports:
+      - 6379:6379
+# Note: running the auth service against these requires building the service and
+# setting env vars to point to the test DB/Redis. This file is scaffold only.

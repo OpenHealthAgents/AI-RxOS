@@ -22,7 +22,7 @@ from .algorithms import (
 )
 from .dataset import DatasetBuilder, LabelGenerator
 from .explainability import ExplainabilityEngine
-from .features import FeatureStore
+from .features import FeatureEngineeringEngine, FeatureStore
 from .models import (
     DatasetRecord,
     DriftReport,
@@ -31,18 +31,28 @@ from .models import (
     FeatureDataType,
     FeatureDefinition,
     FeatureDriftMetric,
+    FeatureRecord,
+    FeatureUncertainty,
     FeatureVector,
     InferenceRequest,
     MLDataset,
     ModelArchitecture,
     ModelArtifact,
     ModelEvaluationMetrics,
+    ModelMonitoringReport,
     ModelStage,
+    MonitoringAlert,
+    MonitoringStatus,
     PredictionExplanation,
+    PredictionFailure,
     StoredPrediction,
     TargetLabel,
 )
-from .monitoring import DriftDetectionEngine
+from .monitoring import (
+    DriftDetectionEngine,
+    DriftDetector,
+    PopulationStabilityIndexDetector,
+)
 from .pipeline import TrainingPipeline, ValidationPipeline
 from .prediction_store import PredictionStore
 from .registry import ModelRegistry
@@ -52,6 +62,7 @@ __all__ = [
     "DatasetBuilder",
     "DatasetRecord",
     "DriftDetectionEngine",
+    "DriftDetector",
     "DriftReport",
     "DriftStatus",
     "ExplainabilityEngine",
@@ -59,7 +70,10 @@ __all__ = [
     "FeatureDataType",
     "FeatureDefinition",
     "FeatureDriftMetric",
+    "FeatureEngineeringEngine",
+    "FeatureRecord",
     "FeatureStore",
+    "FeatureUncertainty",
     "FeatureVector",
     "GradientBoostingBaseline",
     "InferenceRequest",
@@ -69,10 +83,15 @@ __all__ = [
     "ModelArchitecture",
     "ModelArtifact",
     "ModelEvaluationMetrics",
+    "ModelMonitoringReport",
     "ModelRegistry",
     "ModelServingEngine",
     "ModelStage",
+    "MonitoringAlert",
+    "MonitoringStatus",
+    "PopulationStabilityIndexDetector",
     "PredictionExplanation",
+    "PredictionFailure",
     "PredictionStore",
     "RandomForestBaseline",
     "StoredPrediction",

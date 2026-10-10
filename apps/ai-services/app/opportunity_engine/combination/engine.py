@@ -1,9 +1,15 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from datetime import date, datetime, timezone
+from typing import Any, Dict, List
 from uuid import uuid4
+
+from app.opportunity_engine.intelligence_47_49 import (
+    CombinationIntelligence,
+    ResistanceIntelligence,
+    synthesize_combinations,
+)
 
 from .models import (
     COMBINATION_INTELLIGENCE_DISCLAIMER,
@@ -56,6 +62,25 @@ class CombinationIntelligenceEngine:
 
     def __init__(self) -> None:
         self._profiles = self._build_canonical_combination_profiles()
+
+    def evaluate_intelligence(
+        self,
+        asset_id: str,
+        prediction_cutoff: date,
+        *,
+        tenant_id: str | None = None,
+        resistance_intelligence: ResistanceIntelligence,
+        knowledge_graph: Any | None = None,
+    ) -> CombinationIntelligence:
+        canonical = self._profiles.get(asset_id.casefold())
+        return synthesize_combinations(
+            asset_id=asset_id,
+            asset_name=canonical.asset_name if canonical else asset_id.capitalize(),
+            prediction_cutoff=prediction_cutoff,
+            tenant_id=tenant_id,
+            resistance_intelligence=resistance_intelligence,
+            knowledge_graph=knowledge_graph,
+        )
 
     def get_asset_combination_profile(self, asset_id: str) -> CombinationIntelligenceProfile:
         """

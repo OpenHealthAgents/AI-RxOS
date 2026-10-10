@@ -7,6 +7,10 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.opportunity_engine.intelligence import (
+    IntelligenceProfileBase,
+    IntelligenceValue,
+)
 
 # ==============================================================================
 # 1. Observation & Evaluation Enums
@@ -67,6 +71,7 @@ class RawBiologicalObservation(BaseModel):
 
     id: UUID = Field(default_factory=uuid4)
     asset_id: str
+    tenant_id: Optional[str] = None
     parameter_name: str
     observation_type: BiologyObservationType
     raw_text_value: str
@@ -174,3 +179,14 @@ class EvaluateAssetBiologyRequest(BaseModel):
 
 class EvaluateAssetBiologyResponse(BaseModel):
     profile: BiologyIntelligenceProfile
+
+
+class BiologyIntelligence(IntelligenceProfileBase):
+    """Cutoff-aware biology intelligence; unsupported metrics remain explicitly unknown."""
+
+    biology_validation: IntelligenceValue
+    potency: IntelligenceValue
+    selectivity: IntelligenceValue
+    mechanistic_confidence: IntelligenceValue
+    biomarker_strength: IntelligenceValue
+    translational_readiness: IntelligenceValue

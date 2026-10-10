@@ -1,0 +1,11 @@
+{
+  "command": [
+    "C:\\Users\\Lenovo\\Downloads\\AI-RxOS\\.venv-1\\Scripts\\ruff.exe",
+    "check",
+    "app",
+    "tests"
+  ],
+  "returncode": 0,
+  "stdout": "All checks passed!\n",
+  "stderr": ""
+}

@@ -2,11 +2,24 @@ from __future__ import annotations
 
 import logging
 import math
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 from uuid import UUID, uuid4
 
+from app.opportunity_engine.intelligence import (
+    EpistemicClass,
+    IntelligenceEvidence,
+    IntelligenceRuleFinding,
+    IntelligenceValue,
+    IntelligenceValueStatus,
+    cutoff_valid_knowledge_graph_evidence,
+    evidence_confidence,
+    registered_model_prediction,
+    unknown_value,
+)
+
 from .models import (
+    BiologyIntelligence,
     BiologyIntelligenceProfile,
     BiologyObservationType,
     DimensionEvaluation,
@@ -162,6 +175,222 @@ class BiologyIntelligenceEngine:
     def get_raw_observations_for_asset(self, asset_id: str) -> List[RawBiologicalObservation]:
         """Returns all raw biological observations for an asset."""
         return list(self._canonical_observations.get(asset_id, []))
+
+    def evaluate_intelligence(
+        self,
+        asset_id: str,
+        prediction_cutoff: date,
+        *,
+        tenant_id: Optional[str] = None,
+        asset_name: Optional[str] = None,
+        custom_observations: Optional[List[RawBiologicalObservation]] = None,
+        feature_store: Any | None = None,
+        model_registry: Any | None = None,
+        knowledge_graph: Any | None = None,
+    ) -> BiologyIntelligence:
+        """Synthesize only cutoff-valid, attributable biological evidence and optional ML."""
+        if custom_observations and any(
+            item.asset_id.lower() != asset_id.lower()
+            or item.tenant_id not in (None, tenant_id)
+            for item in custom_observations
+        ):
+            raise ValueError("Biology observations must belong to the requested asset and tenant.")
+
+        observations = self.get_raw_observations_for_asset(asset_id) + list(custom_observations or [])
+        observations = [
+            item for item in observations if item.tenant_id in (None, tenant_id)
+        ]
+        admissible = [
+            item
+            for item in observations
+            if item.observation_date is not None
+            and item.observation_date <= prediction_cutoff
+        ]
+        undated_or_future = [item for item in observations if item not in admissible]
+
+        def observation_evidence(item: RawBiologicalObservation) -> IntelligenceEvidence:
+            return IntelligenceEvidence(
+                evidence_id=str(item.id),
+                source_type="biological_observation",
+                source_reference=item.pmid or item.nct_id or str(item.id),
+                citation=item.source_citation,
+                observed_at=item.observation_date,
+                confidence=(
+                    item.confidence if "confidence" in item.model_fields_set else None
+                ),
+                epistemic_class=EpistemicClass.FACT,
+                provenance={
+                    "asset_id": item.asset_id,
+                    "parameter_name": item.parameter_name,
+                    "observation_type": item.observation_type.value,
+                    "unit": item.unit,
+                    "assay_type": item.assay_type,
+                    "target_or_gene": item.target_or_gene,
+                    "model_system": item.model_system,
+                },
+            )
+
+        observed_evidence = [observation_evidence(item) for item in admissible]
+        excluded_evidence = [
+            IntelligenceEvidence(
+                evidence_id=str(item.id),
+                source_type="biological_observation_excluded_from_snapshot",
+                source_reference=item.pmid or item.nct_id or str(item.id),
+                citation=item.source_citation,
+                observed_at=item.observation_date,
+                confidence=(
+                    item.confidence if "confidence" in item.model_fields_set else None
+                ),
+                epistemic_class=EpistemicClass.FACT,
+                provenance={
+                    "exclusion_reason": (
+                        "observation_date_missing"
+                        if item.observation_date is None
+                        else "observation_after_prediction_cutoff"
+                    ),
+                    "prediction_cutoff": prediction_cutoff.isoformat(),
+                },
+            )
+            for item in undated_or_future
+        ]
+        kg_evidence = cutoff_valid_knowledge_graph_evidence(
+            asset_id=asset_id,
+            prediction_cutoff=prediction_cutoff,
+            knowledge_graph=knowledge_graph,
+        )
+
+        _, potency_lineage = self._derive_potency_score(admissible)
+        _, selectivity_lineage = self._derive_selectivity_score(admissible)
+        _, biomarker_lineage = self._derive_biomarker_score(admissible)
+        _, mechanism_lineage = self._derive_mechanistic_confidence(admissible)
+        _, validation_lineage = self._derive_biology_validation_score(admissible)
+        _, translational_lineage = self._derive_translational_readiness(admissible)
+        lineage_by_output = {
+            "biology_validation": validation_lineage,
+            "potency": potency_lineage,
+            "selectivity": selectivity_lineage,
+            "mechanistic_confidence": mechanism_lineage,
+            "biomarker_strength": biomarker_lineage,
+            "translational_readiness": translational_lineage,
+        }
+
+        metrics: dict[str, IntelligenceValue] = {}
+        for output_name, lineage in lineage_by_output.items():
+            supporting = [
+                observation_evidence(item)
+                for item in admissible
+                if str(item.id) in {str(value) for value in lineage.raw_observation_ids}
+            ]
+            if not supporting:
+                metrics[output_name] = unknown_value(
+                    output_name,
+                    "No dated, cutoff-valid biological observation supports this metric.",
+                    provenance={
+                        "formula": lineage.formula,
+                        "evidence_gaps": lineage.evidence_gaps,
+                    },
+                )
+                continue
+            metrics[output_name] = IntelligenceValue(
+                name=output_name,
+                value=lineage.calculated_value,
+                status=IntelligenceValueStatus.AVAILABLE,
+                epistemic_class=EpistemicClass.DERIVED_FEATURE,
+                confidence=evidence_confidence(supporting),
+                supporting_evidence=supporting,
+                provenance={
+                    "formula": lineage.formula,
+                    "inputs": lineage.inputs,
+                    "observation_ids": [str(value) for value in lineage.raw_observation_ids],
+                    "prediction_cutoff": prediction_cutoff.isoformat(),
+                },
+            )
+
+        model_component, prediction = registered_model_prediction(
+            model_name="biology_translational",
+            asset_id=asset_id,
+            prediction_cutoff=prediction_cutoff,
+            tenant_id=tenant_id,
+            registry=model_registry,
+            feature_store=feature_store,
+        )
+        if prediction is not None and prediction.probability is not None:
+            model_evidence = [
+                IntelligenceEvidence(
+                    evidence_id=f"feature:{name}",
+                    source_type="model_input_feature",
+                    source_reference=reference,
+                    confidence=None,
+                    epistemic_class=EpistemicClass.ML_PREDICTION,
+                    provenance={"feature_name": name, "model_version": prediction.model_version},
+                )
+                for name, metadata in prediction.input_snapshot.get("observation_dates", {}).items()
+                for reference in metadata.get("evidence_references", [])
+            ]
+            metrics["translational_readiness"] = IntelligenceValue(
+                name="translational_readiness",
+                value=prediction.probability,
+                status=IntelligenceValueStatus.AVAILABLE,
+                epistemic_class=EpistemicClass.ML_PREDICTION,
+                confidence=prediction.confidence,
+                supporting_evidence=model_evidence,
+                provenance={
+                    "model_name": prediction.model_name,
+                    "model_version": prediction.model_version,
+                    "feature_version": prediction.feature_version,
+                    "prediction_cutoff": prediction.prediction_cutoff.isoformat()
+                    if prediction.prediction_cutoff
+                    else None,
+                    "prediction_timestamp": prediction.prediction_timestamp.isoformat(),
+                    "input_snapshot": prediction.input_snapshot,
+                },
+            )
+
+        rule_findings: list[IntelligenceRuleFinding] = []
+        for dimension in EvaluationDimension:
+            evaluated = self._evaluate_dimension(dimension, admissible)
+            if not evaluated.raw_observation_ids:
+                continue
+            rule_findings.append(
+                IntelligenceRuleFinding(
+                    rule_id=f"biology_dimension:{dimension.value}",
+                    result=evaluated.state.value,
+                    applied=True,
+                    supporting_evidence_ids=[str(value) for value in evaluated.raw_observation_ids],
+                    provenance={
+                        "findings": evaluated.findings,
+                        "prediction_cutoff": prediction_cutoff.isoformat(),
+                    },
+                )
+            )
+        if kg_evidence:
+            rule_findings.append(
+                IntelligenceRuleFinding(
+                    rule_id="kg:provenance_backed_biology_relationships",
+                    result="cutoff_valid_relationship_evidence_present",
+                    applied=True,
+                    supporting_evidence_ids=[item.evidence_id for item in kg_evidence],
+                    provenance={"relationship_count": len(kg_evidence)},
+                )
+            )
+
+        return BiologyIntelligence(
+            asset_id=asset_id,
+            asset_name=asset_name or asset_id.capitalize(),
+            tenant_id=tenant_id,
+            prediction_cutoff=prediction_cutoff,
+            biology_validation=metrics["biology_validation"],
+            potency=metrics["potency"],
+            selectivity=metrics["selectivity"],
+            mechanistic_confidence=metrics["mechanistic_confidence"],
+            biomarker_strength=metrics["biomarker_strength"],
+            translational_readiness=metrics["translational_readiness"],
+            evidence=observed_evidence,
+            excluded_undated_evidence=excluded_evidence,
+            knowledge_graph_evidence=kg_evidence,
+            rule_findings=rule_findings,
+            ml_component=model_component,
+        )
 
     # ==============================================================================
     # Dimension Evaluation Logic

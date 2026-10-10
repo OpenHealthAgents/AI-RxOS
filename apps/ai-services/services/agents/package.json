@@ -1,0 +1,17 @@
+{
+  "name": "@ai-rxos/agents",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "uvicorn app.main:app --reload --port 8085",
+    "worker": "python -m app.jobs.worker",
+    "build": "python -m compileall app",
+    "lint": "ruff check app",
+    "test": "python -m pytest -q",
+    "typecheck": "mypy app --ignore-missing-imports",
+    "clean": "rimraf __pycache__ .pytest_cache"
+  },
+  "devDependencies": {
+    "rimraf": "^6.0.1"
+  }
+}

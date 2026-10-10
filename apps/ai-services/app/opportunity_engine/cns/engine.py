@@ -1,12 +1,23 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 from uuid import UUID, uuid4
 
+from app.opportunity_engine.intelligence import (
+    EpistemicClass,
+    IntelligenceEvidence,
+    IntelligenceValue,
+    IntelligenceValueStatus,
+    evidence_confidence,
+    registered_model_prediction,
+    unknown_value,
+)
+
 from .models import (
     CNSEvidenceLevel,
+    CNSIntelligence,
     CNSIntelligenceProfile,
     CNSParameterType,
     CNSScoreLineage,
@@ -146,6 +157,347 @@ class CNSIntelligenceEngine:
 
     def get_raw_observations_for_asset(self, asset_id: str) -> List[RawCNSObservation]:
         return list(self._canonical_observations.get(asset_id, []))
+
+    def evaluate_intelligence(
+        self,
+        asset_id: str,
+        prediction_cutoff: date,
+        *,
+        tenant_id: Optional[str] = None,
+        asset_name: Optional[str] = None,
+        custom_observations: Optional[List[RawCNSObservation]] = None,
+        feature_store: Any | None = None,
+        model_registry: Any | None = None,
+    ) -> CNSIntelligence:
+        """Synthesize dated CNS measurements and optional CNS ML without conflating exposure and efficacy."""
+        if custom_observations and any(
+            item.asset_id.lower() != asset_id.lower()
+            or item.tenant_id not in (None, tenant_id)
+            for item in custom_observations
+        ):
+            raise ValueError("CNS observations must belong to the requested asset and tenant.")
+        all_observations = [
+            item
+            for item in (
+                self.get_raw_observations_for_asset(asset_id)
+                + list(custom_observations or [])
+            )
+            if item.tenant_id in (None, tenant_id)
+        ]
+        admissible = [
+            item
+            for item in all_observations
+            if item.observation_date is not None
+            and item.observation_date <= prediction_cutoff
+        ]
+        excluded = [item for item in all_observations if item not in admissible]
+
+        def observation_evidence(item: RawCNSObservation) -> IntelligenceEvidence:
+            return IntelligenceEvidence(
+                evidence_id=str(item.id),
+                source_type=f"cns_observation:{item.evidence_level.value}",
+                source_reference=item.pmid or item.nct_id or str(item.id),
+                citation=item.source_citation,
+                observed_at=item.observation_date,
+                confidence=(
+                    item.confidence if "confidence" in item.model_fields_set else None
+                ),
+                epistemic_class=EpistemicClass.FACT,
+                provenance={
+                    "asset_id": item.asset_id,
+                    "parameter_type": item.parameter_type.value,
+                    "species": item.species.value,
+                    "experimental_condition": item.experimental_condition,
+                    "normalized_value": item.normalized_value,
+                    "normalized_unit": item.normalized_unit,
+                },
+            )
+
+        evidence = [observation_evidence(item) for item in admissible]
+        excluded_evidence = [
+            IntelligenceEvidence(
+                evidence_id=str(item.id),
+                source_type="cns_observation_excluded_from_snapshot",
+                source_reference=item.pmid or item.nct_id or str(item.id),
+                citation=item.source_citation,
+                observed_at=item.observation_date,
+                confidence=(
+                    item.confidence if "confidence" in item.model_fields_set else None
+                ),
+                epistemic_class=EpistemicClass.FACT,
+                provenance={
+                    "exclusion_reason": (
+                        "observation_date_missing"
+                        if item.observation_date is None
+                        else "observation_after_prediction_cutoff"
+                    ),
+                    "prediction_cutoff": prediction_cutoff.isoformat(),
+                },
+            )
+            for item in excluded
+        ]
+
+        exposure_types = {
+            CNSParameterType.BRAIN_PLASMA_RATIO_KP,
+            CNSParameterType.KP_UU,
+            CNSParameterType.CSF_EXPOSURE,
+            CNSParameterType.UNBOUND_BRAIN_CONCENTRATION,
+            CNSParameterType.BBB_PENETRATION,
+            CNSParameterType.BRAIN_TUMOR_EXPOSURE,
+        }
+        activity_types = {
+            CNSParameterType.INTRACRANIAL_RESPONSE,
+            CNSParameterType.CNS_PROGRESSION,
+            CNSParameterType.BRAIN_METASTASIS_RESPONSE,
+        }
+        exposure_observations = [
+            item for item in admissible if item.parameter_type in exposure_types
+        ]
+        activity_observations = [
+            item for item in admissible if item.parameter_type in activity_types
+        ]
+        metastasis_observations = [
+            item
+            for item in admissible
+            if item.parameter_type == CNSParameterType.BRAIN_METASTASIS_RESPONSE
+        ]
+
+        def measured_value(
+            name: str,
+            items: list[RawCNSObservation],
+            reason: str,
+        ) -> IntelligenceValue:
+            if not items:
+                return unknown_value(name, reason)
+            supporting = [observation_evidence(item) for item in items]
+            return IntelligenceValue(
+                name=name,
+                value=[
+                    {
+                        "parameter_type": item.parameter_type.value,
+                        "value": item.normalized_value,
+                        "unit": item.normalized_unit,
+                        "species": item.species.value,
+                        "evidence_level": item.evidence_level.value,
+                        "observation_date": item.observation_date.isoformat(),
+                        "source_reference": item.pmid or item.nct_id or str(item.id),
+                    }
+                    for item in items
+                ],
+                status=IntelligenceValueStatus.AVAILABLE,
+                epistemic_class=EpistemicClass.FACT,
+                confidence=evidence_confidence(supporting),
+                supporting_evidence=supporting,
+                provenance={
+                    "prediction_cutoff": prediction_cutoff.isoformat(),
+                    "measured_not_predicted": True,
+                },
+            )
+
+        exposure = measured_value(
+            "cns_exposure",
+            exposure_observations,
+            "No dated measured CNS exposure observation is available.",
+        )
+        activity = measured_value(
+            "cns_activity",
+            activity_observations,
+            "No dated measured intracranial activity or CNS progression observation is available.",
+        )
+        brain_metastasis = measured_value(
+            "brain_metastasis_relevance",
+            metastasis_observations,
+            "No dated brain-metastasis-specific response observation is available.",
+        )
+
+        predicted_potential = unknown_value(
+            "predicted_cns_potential",
+            "No cutoff-valid, provenance-classified predicted CNS potential feature is available.",
+            status=IntelligenceValueStatus.UNAVAILABLE,
+        )
+        if feature_store is not None:
+            potential_records = feature_store.get_feature_records_for_asset(
+                asset_id,
+                tenant_id=tenant_id,
+                feature_name_prefix="cns_penetration_potential",
+            )
+            eligible_potential = [
+                item
+                for item in potential_records
+                if item.observation_date <= prediction_cutoff
+                and item.prediction_cutoff <= prediction_cutoff
+                and isinstance(item.value, (int, float))
+                and item.provenance.get("epistemic_class")
+                in {
+                    EpistemicClass.ML_PREDICTION.value,
+                    EpistemicClass.AI_INFERENCE.value,
+                    EpistemicClass.HYPOTHESIS.value,
+                }
+            ]
+            if eligible_potential:
+                source = max(
+                    eligible_potential,
+                    key=lambda item: (item.prediction_cutoff, item.observation_date),
+                )
+                epistemic_class = EpistemicClass(source.provenance["epistemic_class"])
+                potential_evidence = [
+                    IntelligenceEvidence(
+                        evidence_id=f"feature:{source.feature_name}:{reference}",
+                        source_type="cns_potential_feature",
+                        source_reference=reference,
+                        observed_at=source.observation_date,
+                        confidence=source.confidence,
+                        epistemic_class=epistemic_class,
+                        provenance=source.provenance,
+                    )
+                    for reference in source.evidence_references
+                ]
+                if not potential_evidence:
+                    feature_reference = (
+                        f"{source.feature_name}:{source.feature_version}:"
+                        f"{source.observation_date.isoformat()}"
+                    )
+                    potential_evidence = [
+                        IntelligenceEvidence(
+                            evidence_id=f"feature_record:{feature_reference}",
+                            source_type="cns_potential_feature_record",
+                            source_reference=feature_reference,
+                            observed_at=source.observation_date,
+                            confidence=(
+                                source.confidence
+                                if "confidence" in source.model_fields_set
+                                else None
+                            ),
+                            epistemic_class=epistemic_class,
+                            provenance=source.provenance,
+                        )
+                    ]
+                predicted_potential = IntelligenceValue(
+                    name="predicted_cns_potential",
+                    value=float(source.value),
+                    status=IntelligenceValueStatus.AVAILABLE,
+                    epistemic_class=epistemic_class,
+                    confidence=(
+                        source.confidence
+                        if "confidence" in source.model_fields_set
+                        else None
+                    ),
+                    supporting_evidence=potential_evidence,
+                    provenance={
+                        "feature_version": source.feature_version,
+                        "observation_date": source.observation_date.isoformat(),
+                        "prediction_cutoff": source.prediction_cutoff.isoformat(),
+                    },
+                )
+
+        ml_component, prediction = registered_model_prediction(
+            model_name="cns",
+            asset_id=asset_id,
+            prediction_cutoff=prediction_cutoff,
+            tenant_id=tenant_id,
+            registry=model_registry,
+            feature_store=feature_store,
+        )
+        if prediction is not None and prediction.probability is not None:
+            predicted_activity = IntelligenceValue(
+                name="predicted_cns_activity",
+                value=prediction.probability,
+                status=IntelligenceValueStatus.AVAILABLE,
+                epistemic_class=EpistemicClass.ML_PREDICTION,
+                confidence=prediction.confidence,
+                supporting_evidence=[
+                    IntelligenceEvidence(
+                        evidence_id=f"model_input:{reference}",
+                        source_type="model_input_feature",
+                        source_reference=reference,
+                        confidence=None,
+                        epistemic_class=EpistemicClass.ML_PREDICTION,
+                        provenance={
+                            "model_version": prediction.model_version,
+                            "feature_version": prediction.feature_version,
+                        },
+                    )
+                    for metadata in prediction.input_snapshot.get("observation_dates", {}).values()
+                    for reference in metadata.get("evidence_references", [])
+                ],
+                provenance={
+                    "model_name": prediction.model_name,
+                    "model_version": prediction.model_version,
+                    "feature_version": prediction.feature_version,
+                    "prediction_cutoff": prediction.prediction_cutoff.isoformat()
+                    if prediction.prediction_cutoff
+                    else None,
+                    "prediction_timestamp": prediction.prediction_timestamp.isoformat(),
+                    "input_snapshot": prediction.input_snapshot,
+                },
+            )
+        else:
+            predicted_activity = unknown_value(
+                "predicted_cns_activity",
+                ml_component.reason or "CNS ML is unavailable.",
+                status=IntelligenceValueStatus.UNAVAILABLE,
+                provenance={
+                    "model_name": ml_component.model_name,
+                    "model_version": ml_component.model_version,
+                    "feature_version": ml_component.feature_version,
+                },
+            )
+
+        confidence_sources = [
+            item
+            for metric in (exposure, activity, brain_metastasis)
+            for item in metric.supporting_evidence
+        ]
+        if predicted_activity.status == IntelligenceValueStatus.AVAILABLE:
+            confidence = IntelligenceValue(
+                name="confidence",
+                value=predicted_activity.confidence,
+                status=(
+                    IntelligenceValueStatus.AVAILABLE
+                    if predicted_activity.confidence is not None
+                    else IntelligenceValueStatus.UNKNOWN
+                ),
+                epistemic_class=EpistemicClass.ML_PREDICTION,
+                confidence=predicted_activity.confidence,
+                supporting_evidence=predicted_activity.supporting_evidence,
+                provenance=predicted_activity.provenance,
+                reason=(
+                    None
+                    if predicted_activity.confidence is not None
+                    else "Serving did not provide a confidence value."
+                ),
+            )
+        elif confidence_sources and all(item.confidence is not None for item in confidence_sources):
+            confidence = IntelligenceValue(
+                name="confidence",
+                value=evidence_confidence(confidence_sources),
+                status=IntelligenceValueStatus.AVAILABLE,
+                epistemic_class=EpistemicClass.DERIVED_FEATURE,
+                confidence=evidence_confidence(confidence_sources),
+                supporting_evidence=confidence_sources,
+                provenance={"aggregation": "minimum source-reported confidence"},
+            )
+        else:
+            confidence = unknown_value(
+                "confidence",
+                "No explicit measured-evidence confidence or CNS model confidence is available.",
+            )
+
+        return CNSIntelligence(
+            asset_id=asset_id,
+            asset_name=asset_name or asset_id.capitalize(),
+            tenant_id=tenant_id,
+            prediction_cutoff=prediction_cutoff,
+            cns_exposure=exposure,
+            predicted_cns_potential=predicted_potential,
+            cns_activity=activity,
+            predicted_cns_activity=predicted_activity,
+            brain_metastasis_relevance=brain_metastasis,
+            confidence=confidence,
+            evidence=evidence,
+            excluded_undated_evidence=excluded_evidence,
+            ml_component=ml_component,
+        )
 
     # ==============================================================================
     # Parameter Normalization

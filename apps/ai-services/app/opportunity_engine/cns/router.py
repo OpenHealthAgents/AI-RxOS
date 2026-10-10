@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+from datetime import date
 from typing import List
-from fastapi import APIRouter, HTTPException, status
+
+from fastapi import APIRouter, HTTPException, Query, status
 
 from .engine import CNSIntelligenceEngine
 from .models import (
+    CNSIntelligence,
     CNSIntelligenceProfile,
     EvaluateAssetCNSRequest,
     EvaluateAssetCNSResponse,
@@ -42,6 +45,25 @@ def get_asset_cns_profile(asset_id: str) -> CNSIntelligenceProfile:
     if not profile.raw_observations and asset_id not in ("tucatinib", "zongertinib", "ox-her2-01", "neratinib", "poziotinib"):
         raise HTTPException(status_code=404, detail=f"No CNS observations found for asset '{asset_id}'")
     return profile
+
+
+@router.get("/intelligence/{asset_id}", response_model=CNSIntelligence)
+def get_asset_cns_intelligence(
+    asset_id: str,
+    prediction_cutoff: date | None = Query(default=None),
+    tenant_id: str | None = Query(default=None),
+) -> CNSIntelligence:
+    cutoff = prediction_cutoff or date.today()
+    from app.ml.router import get_shared_ml_services
+
+    feature_store, model_registry = get_shared_ml_services()
+    return get_cns_engine().evaluate_intelligence(
+        asset_id,
+        cutoff,
+        tenant_id=tenant_id,
+        feature_store=feature_store,
+        model_registry=model_registry,
+    )
 
 
 @router.post("/evaluate", response_model=EvaluateAssetCNSResponse)

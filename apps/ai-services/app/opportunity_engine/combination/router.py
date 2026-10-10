@@ -1,7 +1,13 @@
 from __future__ import annotations
 
+from datetime import date
 from typing import List
-from fastapi import APIRouter, HTTPException, Query, status
+
+from fastapi import APIRouter, Query
+
+from app.opportunity_engine.intelligence_47_49 import CombinationIntelligence
+from app.opportunity_engine.kg.engine import OncologyKnowledgeGraphEngine
+from app.opportunity_engine.resistance.router import get_resistance_engine
 
 from .engine import CombinationIntelligenceEngine
 from .models import (
@@ -13,10 +19,38 @@ from .models import (
 router = APIRouter(prefix="/api/v1/combination", tags=["Combination Intelligence Engine"])
 
 _engine = CombinationIntelligenceEngine()
+_knowledge_graph = OncologyKnowledgeGraphEngine()
 
 
 def get_combination_engine() -> CombinationIntelligenceEngine:
     return _engine
+
+
+@router.get("/intelligence/{asset_id}", response_model=CombinationIntelligence)
+def get_asset_combination_intelligence(
+    asset_id: str,
+    prediction_cutoff: date | None = Query(default=None),
+    tenant_id: str | None = Query(default=None),
+) -> CombinationIntelligence:
+    from app.ml.router import get_shared_ml_services
+
+    cutoff = prediction_cutoff or date.today()
+    feature_store, model_registry = get_shared_ml_services()
+    resistance = get_resistance_engine().evaluate_intelligence(
+        asset_id,
+        cutoff,
+        tenant_id=tenant_id,
+        knowledge_graph=_knowledge_graph,
+        feature_store=feature_store,
+        model_registry=model_registry,
+    )
+    return get_combination_engine().evaluate_intelligence(
+        asset_id,
+        cutoff,
+        tenant_id=tenant_id,
+        resistance_intelligence=resistance,
+        knowledge_graph=_knowledge_graph,
+    )
 
 
 @router.get("/benchmarks", response_model=List[CombinationIntelligenceProfile])

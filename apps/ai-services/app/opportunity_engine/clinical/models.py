@@ -7,6 +7,10 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.opportunity_engine.intelligence import (
+    IntelligenceProfileBase,
+    IntelligenceValue,
+)
 
 # ==============================================================================
 # 1. Enums
@@ -60,6 +64,7 @@ class ObservedClinicalOutcome(BaseModel):
 
     id: UUID = Field(default_factory=uuid4)
     trial_id: str = Field(description="e.g. NCT02614794, NCT04886804")
+    tenant_id: Optional[str] = None
     trial_title: str
     phase: ClinicalStage
     sample_size: int
@@ -204,3 +209,12 @@ class EvaluateAssetClinicalRequest(BaseModel):
 
 class EvaluateAssetClinicalResponse(BaseModel):
     profile: ClinicalDevelopmentProfile
+
+
+class ClinicalIntelligence(IntelligenceProfileBase):
+    """Cutoff-aware clinical synthesis with model and observed evidence kept distinct."""
+
+    clinical_success_probability: IntelligenceValue
+    clinical_readiness: IntelligenceValue
+    development_risk: IntelligenceValue
+    evidence_maturity: IntelligenceValue

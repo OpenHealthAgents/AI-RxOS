@@ -1,0 +1,59 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>MFA Admin</title>
+  <style>body{font-family:Arial;padding:20px} img{max-width:320px}</style>
+</head>
+<body>
+  <h1>MFA Admin</h1>
+  <p>Use the buttons below to enable/disable TOTP and manage backup codes.</p>
+
+  <button id="enable">Enable TOTP</button>
+  <button id="disable">Disable MFA</button>
+  <button id="qr">Get QR</button>
+  <button id="regen">Regenerate Backup Codes</button>
+  <button id="regenRecovery">Regenerate Recovery Codes</button>
+  <button id="consumeRecovery">Consume Recovery Code (prompt)</button>
+  <button id="status">Get MFA Status</button>
+  <div id="out"></div>
+
+  <script>
+    async function request(path, opts){
+      const res = await fetch(path, Object.assign({credentials:'include', headers:{'Content-Type':'application/json'}}, opts));
+      return res.json();
+    }
+    document.getElementById('enable').onclick = async ()=>{
+      const r = await request('/api/v1/auth/mfa/enable',{method:'POST'});
+      document.getElementById('out').innerText = JSON.stringify(r, null, 2);
+    };
+    document.getElementById('disable').onclick = async ()=>{
+      const r = await request('/api/v1/auth/mfa/disable',{method:'POST'});
+      document.getElementById('out').innerText = JSON.stringify(r, null, 2);
+    };
+    document.getElementById('qr').onclick = async ()=>{
+      const r = await request('/api/v1/auth/mfa/qrcode');
+      if (r.qr) document.getElementById('out').innerHTML = '<img src="'+r.qr+'" />';
+      else document.getElementById('out').innerText = JSON.stringify(r, null, 2);
+    };
+    document.getElementById('regen').onclick = async ()=>{
+      const r = await request('/api/v1/auth/mfa/backup/regenerate',{method:'POST'});
+      document.getElementById('out').innerText = JSON.stringify(r, null, 2);
+    };
+    document.getElementById('regenRecovery').onclick = async ()=>{
+      const r = await request('/api/v1/auth/mfa/recovery/regenerate',{method:'POST'});
+      document.getElementById('out').innerText = JSON.stringify(r, null, 2);
+    };
+    document.getElementById('consumeRecovery').onclick = async ()=>{
+      const code = prompt('Enter recovery code to consume');
+      if (!code) return;
+      const r = await request('/api/v1/auth/mfa/recovery/consume',{method:'POST', body: JSON.stringify({ code })});
+      document.getElementById('out').innerText = JSON.stringify(r, null, 2);
+    };
+    document.getElementById('status').onclick = async ()=>{
+      const r = await request('/api/v1/auth/mfa/status');
+      document.getElementById('out').innerText = JSON.stringify(r, null, 2);
+    };
+  </script>
+</body>
+</html>

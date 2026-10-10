@@ -1,9 +1,14 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
-from uuid import uuid4
+from datetime import date, datetime, timezone
+from typing import Any, Dict, List
+
+from app.opportunity_engine.data.fixtures import list_fixture_assets
+from app.opportunity_engine.intelligence_47_49 import (
+    PatientMatchIntelligence,
+    synthesize_patient_match,
+)
 
 from .models import (
     POPULATION_INTELLIGENCE_DISCLAIMER,
@@ -18,7 +23,6 @@ from .models import (
     PopulationRecommendation,
     PopulationTier,
 )
-from app.opportunity_engine.data.fixtures import list_fixture_assets
 
 logger = logging.getLogger(__name__)
 
@@ -165,6 +169,36 @@ class PatientMatchEngine:
 
     def __init__(self) -> None:
         self._profiles = self._build_canonical_patient_match_profiles()
+
+    def evaluate_intelligence(
+        self,
+        asset_id: str,
+        prediction_cutoff: date,
+        *,
+        tenant_id: str | None = None,
+        feature_store: Any | None = None,
+        model_registry: Any | None = None,
+        biology_intelligence: Any | None = None,
+        clinical_intelligence: Any | None = None,
+    ) -> PatientMatchIntelligence:
+        asset = next(
+            (
+                item
+                for item in list_fixture_assets()
+                if item.id.casefold() == asset_id.casefold()
+            ),
+            None,
+        )
+        return synthesize_patient_match(
+            asset_id=asset_id,
+            asset_name=asset.name if asset else asset_id.capitalize(),
+            prediction_cutoff=prediction_cutoff,
+            tenant_id=tenant_id,
+            feature_store=feature_store,
+            model_registry=model_registry,
+            biology_intelligence=biology_intelligence,
+            clinical_intelligence=clinical_intelligence,
+        )
 
     def get_asset_patient_match(self, asset_id: str) -> AssetPatientMatchProfile:
         """

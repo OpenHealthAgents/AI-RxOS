@@ -1,10 +1,15 @@
 from __future__ import annotations
 
+from datetime import date
 from typing import List, Optional
+
 from fastapi import APIRouter, HTTPException, Query, status
+
+from app.opportunity_engine.kg.engine import OncologyKnowledgeGraphEngine
 
 from .engine import BiologyIntelligenceEngine
 from .models import (
+    BiologyIntelligence,
     BiologyIntelligenceProfile,
     EvaluateAssetBiologyRequest,
     EvaluateAssetBiologyResponse,
@@ -14,6 +19,7 @@ from .models import (
 router = APIRouter(prefix="/api/v1/biology", tags=["Biology Intelligence Engine"])
 
 _engine = BiologyIntelligenceEngine()
+_knowledge_graph = OncologyKnowledgeGraphEngine()
 
 
 def get_biology_engine() -> BiologyIntelligenceEngine:
@@ -41,6 +47,26 @@ def get_asset_biology_profile(asset_id: str) -> BiologyIntelligenceProfile:
     if not profile.raw_observations and asset_id not in ("zongertinib", "tucatinib", "poziotinib", "neratinib", "ox-her2-01"):
         raise HTTPException(status_code=404, detail=f"No biological observations found for asset '{asset_id}'")
     return profile
+
+
+@router.get("/intelligence/{asset_id}", response_model=BiologyIntelligence)
+def get_asset_biology_intelligence(
+    asset_id: str,
+    prediction_cutoff: Optional[date] = Query(default=None),
+    tenant_id: Optional[str] = Query(default=None),
+) -> BiologyIntelligence:
+    cutoff = prediction_cutoff or date.today()
+    from app.ml.router import get_shared_ml_services
+
+    feature_store, model_registry = get_shared_ml_services()
+    return get_biology_engine().evaluate_intelligence(
+        asset_id,
+        cutoff,
+        tenant_id=tenant_id,
+        knowledge_graph=_knowledge_graph,
+        feature_store=feature_store,
+        model_registry=model_registry,
+    )
 
 
 @router.post("/evaluate", response_model=EvaluateAssetBiologyResponse)
